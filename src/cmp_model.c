@@ -227,9 +227,10 @@ void cmp_cores(void) {
       // Map stage can get ops from either the uop queue following the uop cache
       // or the decoder.
       Stage_Data* map_stage_uop_cache_src = get_uop_queue_stage_length() > 0 ? uop_queue_stage_get_latest_sd() : &ic->sd;
+      Flag uopq_src_is_icache = get_uop_queue_stage_length() > 0 ? FALSE : TRUE;
       // doesnt work: decode_stage_process_op must be called once per op. For uop cache, one cycle after fetch.
       // I can add a flag: decode_cycle (cycle decoded).
-      update_map_stage(dec->last_sd, map_stage_uop_cache_src);
+      update_map_stage(dec->last_sd, map_stage_uop_cache_src, uopq_src_is_icache);
       update_uop_queue_stage(&ic->sd);
       update_decode_stage(&ic->sd);
       update_decoupled_fe();

@@ -68,7 +68,7 @@ int map_off_path = 0;
 /* Local prototypes */
 
 static inline void stage_process_op(Op*);
-static inline Flag map_fetch_fill_op(Stage_Data* src_sd, int* fetch_idx);
+static inline Flag map_fetch_fill_op(Stage_Data* src_sd, int* fetch_idx, Flag src_is_icache);
 static inline void shift_ops_to_arr_start(Stage_Data* sd);
 
 /**************************************************************************************/
@@ -172,10 +172,12 @@ void debug_map_stage() {
 
 // Consume just from one: Select the stage to consume from
 // Else if UOC_IC_SWITCH_FRAG_DISABLE, also consume from the second one.
-void update_map_stage(Stage_Data* dec_src_sd, Stage_Data* uopq_src_sd) {
+void update_map_stage(Stage_Data* dec_src_sd, Stage_Data* uopq_src_sd, Flag uopq_src_is_icache) {
   Flag        stall = (map->last_sd->op_count > 0);
   Stage_Data* consume_from_sd = NULL;
   Stage_Data* other_sd = NULL;
+  Flag consume_from_is_icache = FALSE;
+  Flag other_is_icache = FALSE;
   Stage_Data *cur, *prev;
   Op**        temp;
   uns         ii;
@@ -200,10 +202,22 @@ void update_map_stage(Stage_Data* dec_src_sd, Stage_Data* uopq_src_sd) {
   cur = &map->sds[STAGE_MAX_DEPTH - 1];
   if (dec_src_sd->op_count && dec_src_sd->ops[0]->op_num == map_stage_next_op_num) {
     consume_from_sd = dec_src_sd;
+    consume_from_is_icache = FALSE;
     other_sd = uopq_src_sd;  //can only consume ALL ops from this stage if the other sd has them ready. Otherwise only the first few
+    if (uopq_src_is_icache) {
+      other_is_icache = TRUE;
+    } else {
+      other_is_icache = FALSE;
+    }
   } else if (uopq_src_sd->op_count && uopq_src_sd->ops[0]->op_num == map_stage_next_op_num) {
     consume_from_sd = uopq_src_sd;
+    if (uopq_src_is_icache) {
+      consume_from_is_icache = TRUE;
+    } else {
+      consume_from_is_icache = FALSE;
+    }
     other_sd = dec_src_sd;
+    other_is_icache = FALSE;
   }
 
   if(!map_off_path) {
@@ -228,9 +242,9 @@ void update_map_stage(Stage_Data* dec_src_sd, Stage_Data* uopq_src_sd) {
     Flag fetched_cfsd = FALSE;
     Flag fetched_osd = FALSE;
     do {
-      fetched_cfsd = map_fetch_fill_op(consume_from_sd, &cfsd_ii);
+      fetched_cfsd = map_fetch_fill_op(consume_from_sd, &cfsd_ii, consume_from_is_icache);
       if (fetch_from_both_srcs) {
-        fetched_osd = map_fetch_fill_op(other_sd, &osd_ii);
+        fetched_osd = map_fetch_fill_op(other_sd, &osd_ii, other_is_icache);
       }
     } while (fetched_cfsd || fetched_osd);
 
@@ -275,12 +289,22 @@ static inline void stage_process_op(Op* op) {
 /**************************************************************************************/
 /* map_fetch_fill_op: Fill the map stage with op from src at fetch_idx */
 
-static inline Flag map_fetch_fill_op(Stage_Data* src_sd, int* fetch_idx) {
+static inline Flag map_fetch_fill_op(Stage_Data* src_sd, int* fetch_idx, Flag src_is_icache) {
   Stage_Data* dest_sd = &map->sds[STAGE_MAX_DEPTH - 1];
   if (*fetch_idx == src_sd->max_op_count)
     return FALSE;
 
   Op* op = src_sd->ops[*fetch_idx];
+
+  // The only case where icache sd can be consumed by the map stage is
+  // when the instruction is fetched from uop and needs to bypass the uop queue.
+  // So if the instruction is not fetched from uop, it cannot be used at this moment.
+  if (src_is_icache) {
+    if (op && !op->fetched_from_uop_cache) {
+      return FALSE;
+    }
+  }
+
   if (op && op->op_num == map_stage_next_op_num) {
     DEBUG(map->proc_id, "Fetching opnum=%llu from %s at idx=%i\n", op->op_num, src_sd->name, *fetch_idx);
     if (!op->decode_cycle) decode_stage_process_op(op);

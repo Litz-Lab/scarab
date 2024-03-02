@@ -59,7 +59,7 @@ void init_map_stage(uns8, const char*);
 void reset_map_stage(void);
 void recover_map_stage(void);
 void debug_map_stage(void);
-void update_map_stage(Stage_Data* dec_src_sd, Stage_Data* uop_queue_src_sd);
+void update_map_stage(Stage_Data* dec_src_sd, Stage_Data* uop_queue_src_sd, Flag uopq_src_is_icache);
 
 
 /**************************************************************************************/
