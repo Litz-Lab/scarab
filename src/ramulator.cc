@@ -282,7 +282,7 @@ void to_ramulator_req(const Mem_Req* scarab_req, Request* ramulator_req) {
     ramulator_req->type = Request::Type::WRITE;
   else if(scarab_req->type == MRT_DFETCH || scarab_req->type == MRT_DSTORE ||
           scarab_req->type == MRT_IFETCH || scarab_req->type == MRT_IPRF ||
-          scarab_req->type == MRT_DPRF)
+          scarab_req->type == MRT_DPRF || scarab_req->type == MRT_UOCPRF || scarab_req->type == MRT_FDIPPRFON || scarab_req->type == MRT_FDIPPRFOFF)
     ramulator_req->type = Request::Type::READ;
   else
     ASSERTM(scarab_req->proc_id, false,
@@ -324,15 +324,16 @@ Mem_Req* ramulator_search_queue(long phys_addr, Mem_Req_Type type) {
   ASSERTM(
     0,
     (type == MRT_IFETCH) || (type == MRT_DFETCH) || (type == MRT_IPRF) ||
-      (type == MRT_DPRF) || (type == MRT_DSTORE) || (type == MRT_MIN_PRIORITY),
+      (type == MRT_DPRF) || (type == MRT_DSTORE) || (type == MRT_MIN_PRIORITY) ||
+      (type == MRT_FDIPPRFON) || (type == MRT_FDIPPRFOFF) || (type == MRT_UOCPRF),
     "Ramulator: Cannot search write requests in Ramulator request queue\n");
   auto it_req = inflight_read_reqs.find(phys_addr);
 
   // Search request queue
   if(it_req != inflight_read_reqs.end()) {
     for(auto req : it_req->second) {
-      if((req->type == MRT_IFETCH || req->type == MRT_IPRF) &&
-         (type == MRT_IFETCH || type == MRT_IPRF))
+      if((req->type == MRT_IFETCH || req->type == MRT_IPRF || req->type == MRT_FDIPPRFON || req->type == MRT_FDIPPRFOFF || req->type == MRT_UOCPRF) &&
+         (type == MRT_IFETCH || type == MRT_IPRF || type == MRT_FDIPPRFON || type == MRT_FDIPPRFOFF || type == MRT_UOCPRF))
         return req;
       else if((req->type == MRT_DFETCH || req->type == MRT_DPRF ||
                req->type == MRT_DSTORE) &&
@@ -344,8 +345,9 @@ Mem_Req* ramulator_search_queue(long phys_addr, Mem_Req_Type type) {
   // Search response queue
   for(auto resp : resp_queue) {
     if(resp.first == phys_addr) {
-      if((resp.second->type == MRT_IFETCH || resp.second->type == MRT_IPRF) &&
-         (type == MRT_IFETCH || type == MRT_IPRF))
+      if((resp.second->type == MRT_IFETCH || resp.second->type == MRT_IPRF ||
+          resp.second->type == MRT_FDIPPRFON || resp.second->type == MRT_FDIPPRFOFF || resp.second->type == MRT_UOCPRF) &&
+         (type == MRT_IFETCH || type == MRT_IPRF || type == MRT_FDIPPRFON || type == MRT_FDIPPRFOFF || type == MRT_UOCPRF))
         return resp.second;
       else if((resp.second->type == MRT_DFETCH ||
                resp.second->type == MRT_DPRF ||

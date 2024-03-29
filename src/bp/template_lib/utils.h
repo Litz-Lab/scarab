@@ -185,6 +185,12 @@ class Circular_Buffer {
     size_ -= 1;
   }
 
+  bool is_full() {
+    if (size_ == buffer_size_)
+      return true;
+    return false;
+  }
+
  private:
   std::vector<T> buffer_;
   int64_t        buffer_size_;

@@ -56,6 +56,7 @@
 #include "prefetcher/pref.param.h"
 #include "prefetcher/pref_common.h"
 #include "prefetcher/stream_pref.h"
+#include "prefetcher/fdip_new.h"
 #include "statistics.h"
 //#include "dram.h"
 //#include "dram.param.h"
@@ -94,6 +95,7 @@ static uns      mem_req_wb_entries     = 0;
 
 Memory*              mem = NULL;
 extern Icache_Stage* ic;
+extern Counter  last_recover_cycle;
 
 Counter Mem_Req_Priority[MRT_NUM_ELEMS];
 Counter Mem_Req_Priority_Offset[MRT_NUM_ELEMS];
@@ -208,6 +210,7 @@ static inline Flag queue_full(Mem_Queue* queue);
 static inline uns  queue_num_free(Mem_Queue* queue);
 
 Flag is_final_state(Mem_Req_State state);
+Flag is_inv_state(Mem_Req_State state);
 
 /**************************************************************************************/
 /* set_memory: */
@@ -262,6 +265,15 @@ void init_mem_req_type_priorities() {
         break;
       case MRT_DPRF:
         priority = MEM_PRIORITY_DPRF;
+        break;
+      case MRT_UOCPRF:
+        priority = MEM_PRIORITY_UOCPRF;
+        break;
+      case MRT_FDIPPRFON:
+        priority = MEM_PRIORITY_FDIPPRFON;
+        break;
+      case MRT_FDIPPRFOFF:
+        priority = MEM_PRIORITY_FDIPPRFOFF;
         break;
       case MRT_WB:
         priority = MEM_PRIORITY_WB;
@@ -350,7 +362,7 @@ void init_memory() {
   init_mem_queue(&mem->l1fill_queue, "L1FILL_QUEUE", mem->total_mem_req_buffers,
                  QUEUE_L1FILL);
 
-  mem->core_fill_queues = (Mem_Queue*)malloc(sizeof(Mem_Queue) * NUM_CORES);
+  mem->core_fill_queues = (Mem_Queue*)calloc(NUM_CORES, sizeof(Mem_Queue));
   core_fill_seq_num     = (Counter*)malloc(sizeof(Counter) * NUM_CORES);
   for(proc_id = 0; proc_id < NUM_CORES; proc_id++) {
     char buf[MAX_STR_LENGTH + 1];
@@ -690,6 +702,31 @@ static void print_mem_queue_generic(Mem_Queue* queue) {
 }
 
 /**************************************************************************************/
+/* print_req_buffer: */
+
+void print_req_buffer() {
+  Mem_Req* req = NULL;
+
+  fprintf(stdout, "REQ_BUFFER --- cycle: %s\n", unsstr64(cycle_count));
+  fprintf(stdout, "------------------------------------------------------\n");
+
+  for(int reqbuf_id = 0; reqbuf_id < MEM_REQ_BUFFER_ENTRIES; reqbuf_id++) {
+    req = &(mem->req_buffer[reqbuf_id]);
+    fprintf(stdout,
+            ": q:%s reqbuf:%d index:%d st:%s type:%s pri:%s beg:%s "
+            "rdy:%s addr:%s size:%d age:%s mbank:%d oc:%d oo:%s off:%d\n",
+            (req->queue ? req->queue->name : "ramulator"),
+            reqbuf_id, req->id,
+            mem_req_state_names[req->state], Mem_Req_Type_str(req->type),
+            unsstr64(req->priority), unsstr64(req->start_cycle),
+            unsstr64(req->rdy_cycle), hexstr64s(req->addr), req->size,
+            unsstr64(cycle_count - req->start_cycle), req->mem_flat_bank,
+            req->op_count, unsstr64(req->oldest_op_unique_num), req->off_path);
+  }
+  fprintf(stdout, "------------------------------------------------------\n");
+}
+
+/**************************************************************************************/
 /* print_mem_queue: */
 
 void print_mem_queue(Mem_Queue_Type queue_type) {
@@ -710,6 +747,9 @@ void print_mem_queue(Mem_Queue_Type queue_type) {
 
   if(queue_type & QUEUE_MLC_FILL)
     print_mem_queue_generic(&(mem->mlc_fill_queue));
+
+  if(queue_type & QUEUE_CORE_FILL)
+    print_mem_queue_generic(&(mem->core_fill_queues[0]));
 }
 
 
@@ -783,6 +823,7 @@ void debug_memory() {
 
   print_mem_queue(QUEUE_L1 | QUEUE_BUS_OUT | QUEUE_L1FILL | QUEUE_MLC |
                   QUEUE_MLC_FILL);
+  print_req_buffer();
 }
 
 /**************************************************************************************/
@@ -1540,7 +1581,7 @@ static Flag mem_complete_l1_access(Mem_Req*         req,
   }
 
   if(!PREFETCH_UPDATE_LRU_L1 &&
-     (req->type == MRT_DPRF || req->type == MRT_IPRF))
+     (req->type == MRT_DPRF || req->type == MRT_IPRF || req->type == MRT_UOCPRF || req->type == MRT_FDIPPRFON || req->type == MRT_FDIPPRFOFF))
     update_l1_lru = FALSE;
   data = (L1_Data*)cache_access(&L1(req->proc_id)->cache, req->addr, &line_addr,
                                 update_l1_lru);  // access L2
@@ -1549,7 +1590,7 @@ static Flag mem_complete_l1_access(Mem_Req*         req,
     data = NULL;
 
   // cmp FIXME prefetchers
-  if((req->type == MRT_DPRF || req->type == MRT_IPRF ||
+  if((req->type == MRT_DPRF || req->type == MRT_IPRF || req->type == MRT_UOCPRF || req->type == MRT_FDIPPRFON || req->type == MRT_FDIPPRFOFF ||
       req->demand_match_prefetch) &&
      req->prefetcher_id != 0) {
     STAT_EVENT(req->proc_id, L1_PREF_ACCESS);
@@ -1700,7 +1741,7 @@ static Flag mem_complete_l1_access(Mem_Req*         req,
           ASSERTM(0,
                   req->type == MRT_DSTORE || req->type == MRT_IFETCH ||
                     req->type == MRT_DFETCH || req->type == MRT_IPRF ||
-                    req->type == MRT_DPRF,
+                    req->type == MRT_DPRF || req->type == MRT_UOCPRF || req->type == MRT_FDIPPRFON || req->type == MRT_FDIPPRFOFF,
                   "ERROR: Issuing a currently unhandled request type (%s) to "
                   "Ramulator\n",
                   Mem_Req_Type_str(req->type));
@@ -1726,7 +1767,7 @@ static Flag mem_complete_l1_access(Mem_Req*         req,
       }
 
       // cmp FIXME prefetchers
-      if((req->type == MRT_DPRF || req->type == MRT_IPRF ||
+      if((req->type == MRT_DPRF || req->type == MRT_IPRF || req->type == MRT_UOCPRF || req->type == MRT_FDIPPRFON || req->type == MRT_FDIPPRFOFF ||
           req->demand_match_prefetch) &&
          req->prefetcher_id !=
            0) {  // cmp FIXME What can I do for the prefetcher?
@@ -1764,7 +1805,7 @@ static Flag mem_complete_mlc_access(Mem_Req*         req,
   Flag      update_mlc_lru = TRUE;
 
   if(!PREFETCH_UPDATE_LRU_MLC &&
-     (req->type == MRT_DPRF || req->type == MRT_IPRF))
+     (req->type == MRT_DPRF || req->type == MRT_IPRF || req->type == MRT_UOCPRF || req->type == MRT_FDIPPRFON || req->type == MRT_FDIPPRFOFF))
     update_mlc_lru = FALSE;
   data = (MLC_Data*)cache_access(&MLC(req->proc_id)->cache, req->addr,
                                  &line_addr, update_mlc_lru);  // access MLC
@@ -1841,6 +1882,7 @@ static Flag mem_complete_mlc_access(Mem_Req*         req,
     return TRUE;
   }
   ASSERT(req->proc_id, 0);
+  return FALSE;
 }
 
 /**************************************************************************************/
@@ -1884,7 +1926,7 @@ static void mem_process_l1_reqs() {
     if(req->state == MRS_L1_NEW) {
       mem_start_l1_access(req);
       STAT_EVENT(req->proc_id, L1_ACCESS);
-      if(req->type == MRT_DPRF || req->type == MRT_IPRF)
+      if(req->type == MRT_DPRF || req->type == MRT_IPRF || req->type == MRT_UOCPRF || req->type == MRT_FDIPPRFON || req->type == MRT_FDIPPRFOFF)
         STAT_EVENT(req->proc_id, L1_PREF_ACCESS);
       else
         STAT_EVENT(req->proc_id, L1_DEMAND_ACCESS);
@@ -1976,7 +2018,7 @@ static void mem_process_mlc_reqs() {
     if(req->state == MRS_MLC_NEW) {
       mem_start_mlc_access(req);
       STAT_EVENT(req->proc_id, MLC_ACCESS);
-      if(req->type == MRT_DPRF || req->type == MRT_IPRF)
+      if(req->type == MRT_DPRF || req->type == MRT_IPRF || req->type == MRT_UOCPRF || req->type == MRT_FDIPPRFON || req->type == MRT_FDIPPRFOFF)
         STAT_EVENT(req->proc_id, MLC_PREF_ACCESS);
       else
         STAT_EVENT(req->proc_id, MLC_DEMAND_ACCESS);
@@ -2390,7 +2432,7 @@ void mem_complete_bus_in_access(Mem_Req* req, Counter priority) {
     // this stat
     INC_STAT_EVENT(req->proc_id, CORE_MEM_LATENCY_IFETCH + req->type,
                    req->rdy_cycle - req->mem_queue_cycle);
-    if(req->type != MRT_DPRF && req->type != MRT_IPRF &&
+    if(req->type != MRT_DPRF && req->type != MRT_IPRF && req->type != MRT_UOCPRF && req->type != MRT_FDIPPRFON && req->type != MRT_FDIPPRFOFF &&
        !req->demand_match_prefetch) {
       INC_STAT_EVENT_ALL(TOTAL_MEM_LATENCY_DEMAND,
                          req->rdy_cycle - req->mem_queue_cycle);
@@ -2708,8 +2750,8 @@ static inline Mem_Req* mem_search_queue(
     src_addr       = CACHE_SIZE_ADDR(req->size, addr);
     match          = FALSE;
 
-    if((dest_addr == src_addr) &&
-       !is_final_state(req->state)) { /* address match */
+    if((dest_addr == src_addr)/* &&
+                                 !is_final_state(req->state)*/) { /* address match */
       ASSERTM(proc_id, proc_id == get_proc_id_from_cmp_addr(addr),
               "Proc ID does not match proc ID in address!\n");
       ASSERTM(proc_id, req->proc_id == get_proc_id_from_cmp_addr(req->addr),
@@ -2726,7 +2768,7 @@ static inline Mem_Req* mem_search_queue(
       } else {
         switch(req->type) {
           case MRT_IFETCH:
-            if(type == MRT_IPRF)
+            if(type == MRT_IPRF || type == MRT_UOCPRF || type == MRT_FDIPPRFON || type == MRT_FDIPPRFOFF)
               match = TRUE;
             if(collect_stats && ((type == MRT_WB) || (type == MRT_WB_NODIRTY)))
               STAT_EVENT(req->proc_id, WB_MATCH_DEMAND);
@@ -2747,10 +2789,37 @@ static inline Mem_Req* mem_search_queue(
             if(type == MRT_IFETCH) {
               match                = TRUE;
               *demand_hit_prefetch = TRUE;
+            } else if (type == MRT_UOCPRF || type == MRT_FDIPPRFON || type == MRT_FDIPPRFOFF) {
+              match = TRUE;
             }
             if(collect_stats && ((type == MRT_WB) || (type == MRT_WB_NODIRTY)))
               STAT_EVENT(req->proc_id, WB_MATCH_PREF);
             break;
+          case MRT_UOCPRF:
+            if (type == MRT_IFETCH) {
+              match                = TRUE;
+              *demand_hit_prefetch = TRUE;
+            } else if (type == MRT_IPRF || type == MRT_FDIPPRFON || type == MRT_FDIPPRFOFF) {
+              match = TRUE;
+            }
+            break;
+          case MRT_FDIPPRFON:
+            if (type == MRT_IFETCH) {
+              match                = TRUE;
+              *demand_hit_prefetch = TRUE;
+            } else if (type == MRT_IPRF || type == MRT_FDIPPRFON || type == MRT_FDIPPRFOFF) {
+              match = TRUE;
+            }
+            break;
+          case MRT_FDIPPRFOFF:
+            if (type == MRT_IFETCH) {
+              match                = TRUE;
+              *demand_hit_prefetch = TRUE;
+            } else if (type == MRT_IPRF || type == MRT_FDIPPRFON || type == MRT_FDIPPRFOFF) {
+              match = TRUE;
+            }
+            break;
+
           case MRT_DPRF:
             if((type == MRT_DFETCH) || (type == MRT_DSTORE)) {
               match                = TRUE;
@@ -2840,6 +2909,9 @@ static inline Mem_Req* mem_search_reqbuf(
       } else if(req->type == MRT_DPRF) {
         if((type == MRT_DFETCH) || (type == MRT_DSTORE))
           *demand_hit_prefetch = TRUE;
+      } else if(req->type == MRT_FDIPPRFON || req->type == MRT_FDIPPRFOFF || req->type == MRT_UOCPRF) {
+        if(type == MRT_IFETCH)
+          *demand_hit_prefetch = TRUE;
       }
       return req;
     }
@@ -2872,7 +2944,6 @@ static inline Mem_Req* mem_search_reqbuf(
   return NULL;
 }
 
-
 /**************************************************************************************/
 /* mem_adjust_matching_request: */
 // cmp FIXME for cmp support
@@ -2901,6 +2972,14 @@ Flag mem_adjust_matching_request(Mem_Req* req, Mem_Req_Type type, Addr addr,
   higher_priority = current_priority < old_priority;
 
   STAT_EVENT(req->proc_id, MEM_REQ_BUFFER_HIT);
+  if (req->fdip_emitted_cycle) {
+    STAT_EVENT(req->proc_id, MEM_REQ_FDIP_BUFFER_HIT);
+    INC_STAT_EVENT(req->proc_id, MEM_REQ_FDIP_CYCLE_DELTA, cycle_count - req->fdip_emitted_cycle);
+  } else if (req->demand_icache_emitted_cycle) {
+    STAT_EVENT(req->proc_id, MEM_REQ_DEMAND_ICACHE_BUFFER_HIT);
+    INC_STAT_EVENT(req->proc_id, MEM_REQ_DEMAND_ICACHE_CYCLE_DELTA, cycle_count - req->demand_icache_emitted_cycle);
+  }
+
   wp_process_reqbuf_match(req, op);
 
   if(ALLOW_TYPE_MATCHES && demand_hit_writeback) {
@@ -2935,6 +3014,10 @@ Flag mem_adjust_matching_request(Mem_Req* req, Mem_Req_Type type, Addr addr,
 
   Flag old_off_path_confirmed = req->off_path_confirmed;
   Flag old_type               = req->type;
+  Flag type_added             = FALSE;
+
+  mem_req_set_types(req, type);  // Update record of types that merged into this memreq
+  type_added                  = TRUE;
 
   /* Adjust op related fields in the request */
   if(op) {
@@ -3035,6 +3118,8 @@ Flag mem_adjust_matching_request(Mem_Req* req, Mem_Req_Type type, Addr addr,
                                queue entry */
       if(PROMOTE_TO_HIGHER_PRIORITY_MEM_REQ_TYPE &&
          Mem_Req_Priority[type] < Mem_Req_Priority[req->type]) {
+        if(req->type == MRT_FDIPPRFOFF && type == MRT_FDIPPRFON)
+          STAT_EVENT(req->proc_id, PROMOTION_FROM_FDIP_OFF_TO_ON);
         /* Promote to the higher priority type (DRAM model
            only looks at type priority). This may lead to a
            bit of inaccuracy, but quick_release perf diff is
@@ -3086,7 +3171,7 @@ Flag mem_adjust_matching_request(Mem_Req* req, Mem_Req_Type type, Addr addr,
   }
 
   // CMP FIXME
-  if((req->type == MRT_IFETCH || req->type == MRT_IPRF) && !req->done_func)
+  if((req->type == MRT_IFETCH || req->type == MRT_IPRF || req->type == MRT_FDIPPRFON || req->type == MRT_FDIPPRFOFF) && !req->done_func)
     req->done_func = done_func;
 
   if(req->off_path &&  // cmp IGNORE
@@ -3094,6 +3179,20 @@ Flag mem_adjust_matching_request(Mem_Req* req, Mem_Req_Type type, Addr addr,
     req->off_path           = FALSE;
     req->off_path_confirmed = FALSE;
   }
+
+  // If the mem requests for the same FDIP type are on the different paths, give priority to the on-path one.
+  if(req->off_path &&
+      ((req->type == MRT_FDIPPRFON && type == MRT_FDIPPRFOFF) || (req->type == MRT_FDIPPRFOFF && type == MRT_FDIPPRFON))) {
+    req->off_path           = FALSE;
+    req->off_path_confirmed = FALSE;
+  }
+
+  // update the actual fdip on/off-path flag for accurate stats
+  // MRT_FDIPPRFON/OFF is based on fdip confidence not the correct on/off-path
+  if ((mem_req_is_type(req, MRT_FDIPPRFON) || mem_req_is_type(req, MRT_FDIPPRFOFF))
+     && (type == MRT_FDIPPRFON || type == MRT_FDIPPRFOFF)
+     && req->fdip_pref_off_path != fdip_off_path(req->proc_id))
+    req->fdip_pref_off_path = 2;
 
   update_mem_req_occupancy_counter(old_type, -1);
   update_mem_req_occupancy_counter(
@@ -3103,7 +3202,7 @@ Flag mem_adjust_matching_request(Mem_Req* req, Mem_Req_Type type, Addr addr,
   // in case a demand matches an L2 prefetch, for example
   req->destination = MIN2(req->destination, destination);
 
-  if((old_type == MRT_DPRF || old_type == MRT_IPRF) &&
+  if((old_type == MRT_DPRF || old_type == MRT_IPRF || old_type == MRT_UOCPRF || old_type == MRT_FDIPPRFON || old_type == MRT_FDIPPRFOFF) &&
      (type == MRT_IFETCH || type == MRT_DFETCH || type == MRT_DSTORE) &&
      req->l1_miss && req->state <= MRS_FILL_L1) {
     perf_pred_off_chip_effect_start(req);
@@ -3120,7 +3219,7 @@ Flag mem_adjust_matching_request(Mem_Req* req, Mem_Req_Type type, Addr addr,
   }
 
   req->req_count++;
-  return TRUE;
+  return SUCCESS_MERGED;
 }
 
 /**************************************************************************************/
@@ -3128,13 +3227,15 @@ Flag mem_adjust_matching_request(Mem_Req* req, Mem_Req_Type type, Addr addr,
 
 Flag mem_can_allocate_req_buffer(uns proc_id, Mem_Req_Type type,
                                  Flag for_l1_writeback) {
-  if(type == MRT_IPRF || type == MRT_DPRF) {
+  Counter watermark = MEM_REQ_BUFFER_PREF_WATERMARK;
+
+  if(type == MRT_IPRF || type == MRT_DPRF || type == MRT_UOCPRF || type == MRT_FDIPPRFON || type == MRT_FDIPPRFOFF) {
     if(PRIVATE_MSHR_ON &&
-       mem->num_req_buffers_per_core[proc_id] + MEM_REQ_BUFFER_PREF_WATERMARK >=
+       mem->num_req_buffers_per_core[proc_id] + watermark >=
          MEM_REQ_BUFFER_ENTRIES) {
       return FALSE;
     } else if(!PRIVATE_MSHR_ON && mem->req_buffer_free_list.count <=
-                                    MEM_REQ_BUFFER_PREF_WATERMARK) {
+                                    watermark) {
       return FALSE;
     }
   }
@@ -3231,7 +3332,7 @@ static Mem_Req* mem_kick_out_prefetch_from_queue(uns mem_bank, Mem_Queue* queue,
     if(KICKOUT_OLDEST_PREFETCH_WITHIN_BANK) {
       for(ii = 0; ii < queue->entry_count; ii++) {
         Mem_Req* req = &(mem->req_buffer[queue->base[ii].reqbuf]);
-        if(req->type != MRT_IPRF && req->type != MRT_DPRF)
+        if(req->type != MRT_IPRF && req->type != MRT_DPRF && req->type != MRT_UOCPRF && req->type != MRT_FDIPPRFON && req->type != MRT_FDIPPRFOFF)
           continue;
         if(oldest_req_age > req->start_cycle &&
            mem_bank == req->mem_flat_bank) {
@@ -3249,7 +3350,7 @@ static Mem_Req* mem_kick_out_prefetch_from_queue(uns mem_bank, Mem_Queue* queue,
       // Search for the oldest prefetch
       for(ii = 0; ii < queue->entry_count; ii++) {
         Mem_Req* req = &(mem->req_buffer[queue->base[ii].reqbuf]);
-        if(req->type != MRT_IPRF && req->type != MRT_DPRF)
+        if(req->type != MRT_IPRF && req->type != MRT_DPRF && req->type != MRT_UOCPRF && req->type != MRT_FDIPPRFON && req->type != MRT_FDIPPRFOFF)
           continue;
         if(oldest_req_age > req->start_cycle) {
           if(req->state < MRS_MEM_WAIT) {
@@ -3415,6 +3516,18 @@ static void mem_init_new_req(
   new_req->off_path_confirmed = FALSE;
   new_req->state              = to_mlc ? MRS_MLC_NEW : MRS_L1_NEW;
   new_req->type               = type;
+  new_req->types              = 0;
+  if (type == MRT_IFETCH) {
+    new_req->demand_icache_emitted_cycle   = cycle_count;
+    new_req->fdip_emitted_cycle      = 0;
+  } else if (type == MRT_FDIPPRFON || type == MRT_FDIPPRFOFF) {
+    new_req->demand_icache_emitted_cycle   = 0;
+    new_req->fdip_emitted_cycle      = cycle_count;
+  } else {
+    new_req->demand_icache_emitted_cycle   = 0;
+    new_req->fdip_emitted_cycle      = 0;
+  }
+  mem_req_set_types(new_req, type);
   new_req->queue              = to_mlc ? &mem->mlc_queue : &mem->l1_queue;
   new_req->proc_id            = proc_id;
   new_req->addr               = addr;
@@ -3490,6 +3603,10 @@ static void mem_init_new_req(
   }
 
   if(new_req->type == MRT_IFETCH && icache_off_path())
+    new_req->off_path = TRUE;
+  // All oracle (correct-path) prefetches are on path.
+  if (((new_req->type == MRT_UOCPRF && !UOC_ORACLE_PREF) || new_req->type == MRT_FDIPPRFON || new_req->type == MRT_FDIPPRFOFF) &&
+      fdip_off_path(proc_id))
     new_req->off_path = TRUE;
 
   STAT_EVENT(proc_id, MEM_REQ_INIT_IFETCH + type);
@@ -3582,7 +3699,7 @@ void mem_insert_req_round_robin() {
                                  order_num;
         mem_insert_req_into_queue(
           *req_ptr, (*req_ptr)->queue,
-          ((*req_ptr)->type == MRT_DPRF || (*req_ptr)->type == MRT_IPRF) ?
+          ((*req_ptr)->type == MRT_DPRF || (*req_ptr)->type == MRT_IPRF || (*req_ptr)->type == MRT_UOCPRF || (*req_ptr)->type == MRT_FDIPPRFON || (*req_ptr)->type == MRT_FDIPPRFOFF) ?
             0 :
             order_num);
         order_num++;
@@ -3731,7 +3848,7 @@ Flag new_mem_req(Mem_Req_Type type, uns8 proc_id, Addr addr, uns size,
             "KICKOUT_PREFETCHES currently not supported, because the mem bank "
             "we use is wrong. Instead, we need a way to get "
             "the bank of the request from Ramulator");
-    if(KICKOUT_PREFETCHES && (type != MRT_IPRF) && (type != MRT_DPRF)) {
+    if(KICKOUT_PREFETCHES && (type != MRT_IPRF) && (type != MRT_DPRF) && (type != MRT_UOCPRF) && (type != MRT_FDIPPRFON) && (type != MRT_FDIPPRFOFF)) {
       if(!KICKOUT_LOOK_FOR_OLDEST_FIRST)
         new_req = mem_kick_out_prefetch_from_queues(
           BANK(addr, RAMULATOR_BANKS * RAMULATOR_CHANNELS, VA_PAGE_SIZE_BYTES),
@@ -3837,6 +3954,14 @@ Flag new_mem_req(Mem_Req_Type type, uns8 proc_id, Addr addr, uns size,
   new_req->global_hist   = (pref_info ? pref_info->global_hist : 0);
   new_req->bw_prefetch   = (pref_info ? pref_info->bw_limited : FALSE);
   new_req->destination   = destination;
+  if (type == MRT_FDIPPRFON || type == MRT_FDIPPRFOFF) {
+    if (fdip_off_path(proc_id))
+      new_req->fdip_pref_off_path = 1;
+    else
+      new_req->fdip_pref_off_path = 0;
+    new_req->ghist = fdip_get_ghist();
+  }
+  new_req->cyc_hit_by_demand_load = 0;
   if(PREF_FRAMEWORK_ON) {
     new_req->bw_prefetchable = PREF_STREAM_ON &&
                                pref_stream_bw_prefetchable(proc_id, addr);
@@ -4164,7 +4289,7 @@ static Flag new_mem_l1_wb_req(Mem_Req_Type type, uns8 proc_id, Addr addr,
             "we use is wrong. Instead, we need a way to get "
             "the bank of the request from Ramulator");
     if(KICKOUT_PREFETCHES &&
-       ((type != MRT_IPRF) && (type != MRT_DPRF))) {  // FIXME: do we kick out
+       ((type != MRT_IPRF) && (type != MRT_DPRF) && (type != MRT_UOCPRF) && (type != MRT_FDIPPRFON) && (type != MRT_FDIPPRFOFF))) {  // FIXME: do we kick out
                                                       // stuff for writebacks
                                                       // also?
       // all this bank computation is meaningless now that we use Ramulator
@@ -4440,7 +4565,7 @@ Flag l1_fill_line(Mem_Req* req) {
 
   // Put prefetches in the right position for replacement
   // cmp FIXME prefetchers
-  if(req->type == MRT_DPRF || req->type == MRT_IPRF) {
+  if(req->type == MRT_DPRF || req->type == MRT_IPRF || req->type == MRT_UOCPRF || req->type == MRT_FDIPPRFON || req->type == MRT_FDIPPRFOFF) {
     mem->pref_replpos = INSERT_REPL_DEFAULT;
     if(PREF_INSERT_LRU) {
       mem->pref_replpos = INSERT_REPL_LRU;
@@ -4793,7 +4918,7 @@ Flag mlc_fill_line(Mem_Req* req) {
                  (req->state != MRS_FILL_MLC));  // write back can fill mlc
                                                  // directly - reqs filling core
                                                  // should not dirty the line
-  data->prefetch = req->type == MRT_DPRF || req->type == MRT_IPRF ||
+  data->prefetch = req->type == MRT_DPRF || req->type == MRT_IPRF || req->type == MRT_UOCPRF || req->type == MRT_FDIPPRFON || req->type == MRT_FDIPPRFOFF ||
                    req->demand_match_prefetch;
   data->seen_prefetch = req->demand_match_prefetch; /* If demand matches
                                                        prefetch, then it is
@@ -5201,6 +5326,10 @@ Flag is_final_state(Mem_Req_State state) {
          (state == MRS_MEM_DONE) || (state == MRS_FILL_DONE);
 }
 
+Flag is_inv_state(Mem_Req_State state) {
+  return state == MRS_INV;
+}
+
 /**************************************************************************************/
 /* wp_process_l1_hit: */
 
@@ -5378,6 +5507,9 @@ static void update_mem_req_occupancy_counter(Mem_Req_Type type, int delta) {
       break;
     case MRT_IPRF:
     case MRT_DPRF:
+    case MRT_UOCPRF:
+    case MRT_FDIPPRFON:
+    case MRT_FDIPPRFOFF:
       counter = &mem_req_pref_entries;
       break;
     case MRT_WB:
@@ -5396,4 +5528,13 @@ uns num_offchip_stall_reqs(uns proc_id) {
   // return dram->proc_infos[proc_id].orig_stall_reqs; // HACKY
   return 0;  // Ramulator_todo: replicate this in Ramulator. Currently is used
              // only to collect statistics
+}
+
+Mem_Req* mem_search_reqbuf_wrapper(
+  uns8 proc_id, Addr addr, Mem_Req_Type type, uns size,
+  Flag* demand_hit_prefetch, Flag* demand_hit_writeback, uns queues_to_search,
+  Mem_Queue_Entry** queue_entry, Flag* ramulator_match) {
+  return mem_search_reqbuf(proc_id, addr, type, size,
+                           demand_hit_prefetch, demand_hit_writeback,
+                           queues_to_search, queue_entry, ramulator_match);
 }

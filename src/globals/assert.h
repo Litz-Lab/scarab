@@ -71,6 +71,7 @@ inline void print_backtrace(void) {
 /* Asserts that cond is true. If cond is false, prints simulation
  * information and stops the simulation. May be disabled by defining
  * NO_ASSERT. */
+#undef ASSERT
 #define ASSERT(proc_id, cond)                                           \
   do {                                                                  \
     if(ENABLE_ASSERTIONS && !(cond)) {                                  \

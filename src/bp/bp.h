@@ -217,6 +217,7 @@ typedef struct Bp_struct {
                                the bp that has to be updated after retirement*/
   void (*recover_func)(Recovery_Info*); /* called to recover the bp when a
                                            misprediction is realized */
+  uns8 (*full_func)(uns);
 } Bp;
 
 typedef struct Bp_Btb_struct {
@@ -277,12 +278,16 @@ void bp_sched_recovery(Bp_Recovery_Info* bp_recovery_info, Op* op,
 void bp_sched_redirect(Bp_Recovery_Info*, Op*, Counter);
 
 void init_bp_data(uns8, Bp_Data*);
+Flag bp_is_predictable(Bp_Data*, uns);
 Addr bp_predict_op(Bp_Data*, Op*, uns, Addr);
+Addr bp_predict_op_evaluate(Bp_Data* bp_data, Op *op, Addr prediction);
 void bp_target_known_op(Bp_Data*, Op*);
 void bp_resolve_op(Bp_Data*, Op*);
 void bp_retire_op(Bp_Data*, Op*);
 void bp_recover_op(Bp_Data*, Cf_Type, Recovery_Info*);
 
+void inc_bstat_fetched(Op* op);
+void inc_bstat_miss(Op* op, Flag uc_hit);
 
 /**************************************************************************************/
 

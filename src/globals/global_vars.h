@@ -33,7 +33,9 @@
 
 #include <stdio.h>
 #include "globals/global_types.h"
+#include "statistics.h"
 
+#include "libs/hash_lib.h"
 
 /**************************************************************************************/
 
@@ -41,11 +43,20 @@ extern Counter  unique_count;
 extern Counter* unique_count_per_core;
 extern Counter* op_count;
 extern Counter* inst_count;
+extern Counter* inst_count_fetched;
 extern Counter  cycle_count;
 extern Counter  sim_time;
 extern Counter* uop_count;
 extern Counter* pret_inst_count;
 extern uns      operating_mode;
+extern Counter  pw_count;
+extern Counter  unique_pws_since_recovery;
+
+extern Counter* period_last_inst_count;
+extern Counter  period_last_cycle_count;
+extern Counter  period_ID;
+
+extern Flag* warmup_dump_done;
 
 extern Flag* trace_read_done;
 extern Flag* reached_exit;
@@ -60,6 +71,11 @@ extern int   mystatus_fd;
 extern Flag frontend_gated;
 extern uns  num_fetched_lowconf_brs;
 
+extern Hash_Table per_branch_stat;
+extern Uop_Queue_Fill_Time uop_queue_fill_time;
+
+extern Flag roi_dump_began;
+extern Counter roi_dump_ID;
 /**************************************************************************************/
 
 #endif /* #ifndef __GLOBAL_VARS_H__ */

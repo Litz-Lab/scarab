@@ -54,8 +54,25 @@ typedef enum Repl_Policy_enum {
                          isn't stored at the cache */
   REPL_MLP,           /* mlp based replacement  -- uses MLP_REPL_POLICY */
   REPL_PARTITION,     /* Based on the partition*/
+  REPL_RESTEER,       /* Prioritize the instr following a resteered branch or fetch barrier */
+  REPL_STICKY_PRIORITY_LINES, /* Prioritize lines tagged with priority bit. */
+
+  REPL_VOID,            /* void policy for loop ending and policy seperation */
+  REPL_LRU_REF,         /* least-recently-used replacement */
+  REPL_NRU,             /* not recently used replacement */
+  REPL_SRRIP,           /* static re-reference interval prediction */
+  REPL_BRRIP,           /* bimodal re-reference interval prediction */
+  REPL_DRRIP,           /* dynamic re-reference interval prediction */
+  REPL_SHIP,            /* signature-based hit predictor */
+
   NUM_REPL
 } Repl_Policy;
+
+typedef enum Cache_Repl_Signiture_enum {
+  CACHE_REPL_SIGH_PC,
+  CACHE_REPL_SIGH_MEM,
+  CACHE_REPL_SIGH_NUM
+} Cache_Repl_Signiture;
 
 typedef struct Cache_Entry_struct {
   uns8    proc_id;
@@ -66,8 +83,12 @@ typedef struct Cache_Entry_struct {
   Counter insertion_time;   /* for replacement policy */
   void*   data;             /* pointer to arbitrary data */
   Flag    pref;             /* extra replacement info */
-  Flag dirty; /* Dirty bit should have been here, however this is used only in
+  Flag    dirty; /* Dirty bit should have been here, however this is used only in
                  warmup now */
+  Addr pw_start_addr; /* for uop cache: start addr of prediction window */
+
+  uns8    reference_val;    /* for re-reference replacement policy */
+  Flag    outcome;          /* for replacement policy */
 } Cache_Entry;
 
 // DO NOT CHANGE THIS ORDER
@@ -119,8 +140,41 @@ typedef struct Cache_struct {
   uns*     num_ways_occupied_core; /* For cache partitioning */
   uns*     lru_index_core;         /* For cache partitioning */
   Counter* lru_time_core;          /* For cache partitioning */
+
+  Flag     tag_incl_offset;        /* The uop cache is byte-addressable, so the tag includes offset bits as well */
+
+  /* For DRRIP repl */
+  uns*     dedicated_policy_set;    /* For dedicated set map */
+  Counter* miss_count;              /* For sampling */
+  Counter  bimodal_count;
+
+  /* For repl with predictor */
+  void* predictor;
 } Cache;
 
+/**************************************************************************************/
+/* Strategy Design */
+struct repl_policy_func {
+  Repl_Policy repl_policy_type;
+
+  void (*action_init)(Cache*, const char*, uns, uns, uns, uns, Repl_Policy);
+  void (*action_repl)(Cache*, Cache_Entry*, uns8, Addr, Addr*, Addr*);
+
+  void (*update_hit)(Cache*, uns, uns, void*);
+  void (*update_insert)(Cache*, uns8, uns, uns, void*);
+  Cache_Entry *(*update_evict)(Cache*, uns8, uns, uns*, void*, Flag);
+};
+
+/* Driven Table */
+extern struct repl_policy_func repl_policy_func_table[NUM_REPL];
+
+/* Strategy Function */
+void init_cache_strategy(Cache*, const char*, uns, uns, uns, uns, Repl_Policy);
+void *cache_insert_strategy(Cache* cache, uns8 proc_id, Addr addr, Addr* line_addr, Addr* repl_line_addr);
+void *cache_access_strategy(Cache* cache, Addr addr, Addr* line_addr, Flag update_repl);
+Cache_Entry* cache_evict_strategy(Cache* cache, uns8 proc_id, uns set, uns* way);
+
+const static Flag CACHE_DEBUG_ENABLE = FALSE; // To be Changed into DEBUG_PARA
 
 /**************************************************************************************/
 /* prototypes */
@@ -136,8 +190,11 @@ void* cache_insert_lru(Cache*, uns8, Addr, Addr*, Addr*);
 void  cache_invalidate(Cache*, Addr, Addr*);
 void  cache_flush(Cache*);
 void* get_next_repl_line(Cache*, uns8, Addr, Addr*, Flag*);
+void* get_next_valid_repl_line(Cache* cache, uns8 proc_id, Addr addr);
 uns   ext_cache_index(Cache*, Addr, Addr*, Addr*);
 Addr  get_cache_line_addr(Cache*, Addr);
+uns   cache_get_invalid_line_count(Cache* cache, Addr addr);
+void  update_repl_resteer_policy(Cache*, Addr);
 
 void* shadow_cache_insert(Cache* cache, uns set, Addr tag, Addr base);
 void* access_shadow_lines(Cache* cache, uns set, Addr tag);

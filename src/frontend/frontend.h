@@ -59,6 +59,10 @@ void frontend_recover(uns proc_id, uns64 inst_uid);
 /* Let the frontend know that this instruction is retired) */
 void frontend_retire(uns proc_id, uns64 inst_uid);
 
+#ifdef ENABLE_PT_MEMTRACE
+/* Trace post-processing to extract basic block vectors */
+void frontend_extract_basic_block_vectors(void);
+#endif
 /*************************************************************/
 
 #endif /*  __FRONTEND_H__*/

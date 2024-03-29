@@ -29,6 +29,10 @@
 #ifndef __FREQ_H__
 #define __FREQ_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "globals/global_types.h"
 
 /**************************************************************************************/
@@ -91,5 +95,10 @@ Counter freq_convert_future_cycle(Freq_Domain_Id src, Counter src_cycle_count,
 
 /* Clean up at the end */
 void freq_done(void);
+
+#ifdef __cplusplus
+}
+
+#endif
 
 #endif /* #ifndef __FREQ_H__ */

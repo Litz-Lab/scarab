@@ -47,24 +47,30 @@ struct InstInfo {
   uint64_t                  pid;          // process ID
   uint64_t                  tid;          // thread ID
   uint64_t                  target;       // branch target
+  uint64_t                  static_target;// encoded branch target (not dynamic). Only non-zero when the information differs from what XED tells you.
   uint64_t                  mem_addr[2];  // memory addresses
   bool                      mem_used[2];  // mem address usage flags
   CustomOp                  custom_op;    // Special or non-x86 ISA instruction
   bool                      taken;        // branch taken
   bool unknown_type;  // No available decode info (presents a nop)
   bool valid;         // True until the end of the sequence
+
+  // used by MEMTRACE frontend to flag the last inst from the trace
+  bool last_inst_from_trace;
+  // used by MEMTRACE frontend to distinguish fetched/non-fetched inst
+  bool fetched_instruction;
 };
 
 #define XED_OP_NAME(ins, op) \
   xed_operand_name(xed_inst_operand(xed_decoded_inst_inst(ins), op))
-
+#define XED_INS_Byte(ins, idx) (xed_decoded_inst_get_byte(ins, idx))
 #define XED_INS_Nop(ins) (XED_INS_Category(ins)) == XED_CATEGORY_NOP || XED_INS_Category(ins) == XED_CATEGORY_WIDENOP)
 #define XED_INS_LEA(ins) (XED_INS_Opcode(ins)) == XO(LEA))
 #define XED_INS_Opcode(ins) xed_decoded_inst_get_iclass(ins)
 #define XED_INS_Category(ins) xed_decoded_inst_get_category(ins)
-#define XED_INS_IsAtomicUpdate(ins) xed_decoded_inst_get_attribute(ins), XED_ATTRIBUTE_LOCKED)
+#define XED_INS_IsAtomicUpdate(ins) xed_decoded_inst_get_attribute(ins, XED_ATTRIBUTE_LOCKED)
 // FIXME: Check if REPs are translated correctly
-#define XED_INS_IsRep(ins) xed_decoded_inst_get_attribute(ins), XED_ATTRIBUTE_REP)
+#define XED_INS_IsRep(ins) xed_decoded_inst_get_attribute(ins, XED_ATTRIBUTE_REP)
 #define XED_INS_HasRealRep(ins)    \
   xed_operand_values_has_real_rep( \
     xed_decoded_inst_operands((xed_decoded_inst_t*)ins))
@@ -109,7 +115,7 @@ struct InstInfo {
 #define XED_INS_Valid(ins) xed_decoded_inst_valid(ins)
 /* Just like PIN we break BBLs on a number of additional instructions such as
  * REP */
-#define XED_INS_ChangeControlFlow(ins) (XED_INS_Category(ins) == XC(COND_BR) || XED_INS_Category(ins) == XC(UNCOND_BR) || XED_INS_Category(ins) == XC(CALL) || XED_INS_Category(ins) == XC(RET) || XED_INS_Category(ins) == XC(SYSCALL) || XED_INS_Category(ins) == XC(SYSRET) || XED_INS_Opcode(ins) == XO(CPUID) || XED_INS_Opcode(ins) == XO(POPF) || XED_INS_Opcode(ins) == XO(POPFD) || XED_INS_Opcode(ins) == XO(POPFQ) || XED_INS_IsRep(ins)
+#define XED_INS_ChangeControlFlow(ins) (XED_INS_Category(ins) == XC(COND_BR) || XED_INS_Category(ins) == XC(UNCOND_BR) || XED_INS_Category(ins) == XC(CALL) || XED_INS_Category(ins) == XC(RET) || XED_INS_Category(ins) == XC(SYSCALL) || XED_INS_Category(ins) == XC(SYSRET) || XED_INS_Opcode(ins) == XO(CPUID) || XED_INS_Opcode(ins) == XO(POPF) || XED_INS_Opcode(ins) == XO(POPFD) || XED_INS_Opcode(ins) == XO(POPFQ) || XED_INS_IsRep(ins))
 #define REG_FullRegName(reg) xed_get_largest_enclosing_register(reg)
 
 #define XED_INS_Mnemonic(ins) \
@@ -137,6 +143,7 @@ struct InstInfo {
 #define XED_INS_IsSysret(ins) (XED_INS_Category(ins) == XED_CATEGORY_SYSRET)
 #define XED_INS_IsInterrupt(ins) \
   (XED_INS_Category(ins) == XED_CATEGORY_INTERRUPT)
+#define XED_INS_DirectBranchOrCallTargetAddress(pc, ins) pc + XED_INS_Size(ins) + xed_operand_values_get_branch_displacement_int32(ins)
 
 #define XED_INS_IsVgather(ins) (XED_INS_Category(ins) == XED_CATEGORY_GATHER)
 #define XED_INS_IsVscatter(ins) (XED_INS_Category(ins) == XED_CATEGORY_SCATTER)
@@ -149,6 +156,7 @@ struct InstInfo {
 #define XED_REG_is_ymm(reg) (xed_reg_class(reg) == XED_REG_CLASS_YMM)
 // TODO: Check if mask is sufficient or if we need to check for K-mask reg
 #define XED_REG_is_k_mask(reg) (xed_reg_class(reg) == XED_REG_CLASS_MASK)
+#define XED_REG_is_gr(reg) (xed_reg_class(reg) == XED_REG_CLASS_GPR)
 #define XED_REG_is_gr32(reg) (xed_reg_class(reg) == XED_REG_CLASS_GPR32)
 #define XED_REG_is_gr64(reg) (xed_reg_class(reg) == XED_REG_CLASS_GPR64)
 // TODO: What is the difference between PINs REG_Size and REG_Width?

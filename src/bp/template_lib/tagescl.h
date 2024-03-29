@@ -50,6 +50,7 @@ class Tage_SC_L_Base {
                                              Branch_Type br_type,
                                              bool        resolve_dir,
                                              uint64_t    br_target)      = 0;
+  virtual bool is_full()                                              = 0;
 };
 
 /* Interface functions:
@@ -82,6 +83,10 @@ class Tage_SC_L : public Tage_SC_L_Base {
     Loop_Predictor<typename CONFIG::LOOP>::build_empty_prediction(
       &prediction_info.loop);
     return branch_id;
+  }
+
+  bool is_full() {
+    return prediction_info_buffer_.is_full();
   }
 
   // It uses the speculative state of the predictor to generate a prediction.

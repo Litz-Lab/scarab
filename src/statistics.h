@@ -33,7 +33,7 @@
 #include "core.param.h"
 #include "general.param.h"
 #include "globals/global_defs.h"
-
+#include "libs/list_lib.h"
 
 /**************************************************************************************/
 /* Type Declarations */
@@ -89,6 +89,18 @@ typedef struct Stat_struct {
   Flag noreset;  // this stat does not get reset (name has prefix "NORESET")
 } Stat;
 
+
+#define UOP_QUEUE_CAPACITY_MAX_MEASURED 7
+typedef struct Uop_Queue_Fill_Time_For_Size_struct {
+  List cycles;
+  List pws;
+  List unique_pws;
+} Uop_Queue_Fill_Time_For_Size;
+
+// Index zero corresponds to filling queue to size 1
+typedef struct Uop_Queue_Fill_Time_struct {
+  Uop_Queue_Fill_Time_For_Size time_for_size[UOP_QUEUE_CAPACITY_MAX_MEASURED];
+} Uop_Queue_Fill_Time;
 
 /**************************************************************************************/
 /* Macros */
@@ -166,9 +178,12 @@ extern Stat** global_stat_array;
 
 /**************************************************************************************/
 /* Prototypes */
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 void        init_global_stats_array(void);
-void        gen_stat_output_file(char*, uns8, Stat*);
+void        gen_stat_output_file(char*, uns8, Stat*, char);
 void        init_global_stats(uns8);
 void        dump_stats(uns8, Flag, Stat[], uns);
 void        reset_stats(Flag);
@@ -177,7 +192,9 @@ Stat_Enum   get_stat_idx(const char* name);
 const Stat* get_stat(uns8, const char*);
 Counter     get_accum_stat_event(Stat_Enum name);
 
-
+#ifdef __cplusplus
+}
+#endif
 /**************************************************************************************/
 
 #endif /* #ifndef __STATISTICS_H__ */

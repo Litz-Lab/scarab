@@ -56,11 +56,14 @@
 #include "power/power_intf.h"
 #include "stat_trace.h"
 #include "trigger.h"
+#include "prefetcher/fdip_new.h"
+#include "prefetcher/eip.h"
 
 #include "bp/bp.param.h"
 #include "core.param.h"
 #include "debug/debug.param.h"
 #include "general.param.h"
+#include "prefetcher/pref.param.h"
 
 #include "ramulator.h"
 
@@ -81,6 +84,7 @@ Counter  unique_count;          /* the global unique op counter */
 Counter* unique_count_per_core; /* the unique op count per core */
 Counter* op_count;              /* the global op counter per core*/
 Counter* inst_count; /* the global instruction counter - retired per core */
+Counter* inst_count_fetched; /* the global FETCHED instruction counter - retired per core */
 Counter* uop_count;  /* the global uop counter - retired per core*/
 Counter  cycle_count = 0; /* the global cycle counter */
 Counter  sim_time    = 0; /* the global time counter */
@@ -96,6 +100,21 @@ Counter* sim_done_last_uop_count;
 Counter* sim_done_last_cycle_count;
 uns*     sim_count;
 uns      operating_mode = SIMULATION_MODE;
+Counter  pw_count   = 0; /* the global PW access counter */
+Counter  unique_pws_since_recovery = 0;
+
+/* the global instruction counter for periodic dump - retired per core */
+Counter* period_last_inst_count;
+/* the global cycle counter for periodic dump*/
+Counter  period_last_cycle_count = 0;
+/* the global dump counter for periodic dump*/
+Counter  period_ID = 0;
+
+/* the global warmup dump flags */
+Flag*    warmup_dump_done;
+
+Hash_Table per_branch_stat;
+Uop_Queue_Fill_Time uop_queue_fill_time;
 
 time_t sim_start_time; /* the time that the simulator was started */
 
@@ -178,13 +197,38 @@ static inline void check_heartbeat(uns8 proc_id, Flag final) {
   last_operating_mode = operating_mode;
   /* End Bookkeeping */
 
-  Counter inst_diff = inst_count[proc_id] -
+  Counter inst_count_to_use = USE_FETCHED_COUNT ?
+                              inst_count_fetched[proc_id] : inst_count[proc_id];
+
+  Counter inst_diff = inst_count_to_use -
                       heartbeat_checked_inst_count;  // FIXME cmp
   Counter rounded_interval = HEARTBEAT_INTERVAL;
 
+  if (PERIODIC_DUMP) {
+    inst_diff = inst_count_to_use - rounded_interval * period_ID;
+  }
+
+  /* dump warmup stats */
+  if (FULL_WARMUP && !warmup_dump_done[proc_id] && inst_count_to_use >= FULL_WARMUP) {
+    ASSERT(proc_id, !PERIODIC_DUMP);
+    dump_stats(proc_id, TRUE, global_stat_array[proc_id], NUM_GLOBAL_STATS);
+    period_last_cycle_count = cycle_count;
+    // this number is used to calcute IPC, so it uses inst_count always
+    period_last_inst_count[proc_id] = inst_count[proc_id];
+    warmup_dump_done[proc_id] = TRUE;
+  }
+
   /* print heartbeat message if necessary */
   if((HEARTBEAT_INTERVAL && inst_diff >= rounded_interval) || final) {
-    heartbeat_checked_inst_count = inst_count[proc_id];
+    if (PERIODIC_DUMP) {
+      dump_stats(proc_id, TRUE, global_stat_array[proc_id], NUM_GLOBAL_STATS);
+      period_last_cycle_count = cycle_count;
+    // this number is used to calcute IPC, so it uses inst_count always
+      period_last_inst_count[proc_id] = inst_count[proc_id];
+      period_ID ++;
+    }
+
+    heartbeat_checked_inst_count = inst_count_to_use;
     double progress_frac         = 0.0;
     if(!final) {
       ASSERT(0, operating_mode == SIMULATION_MODE);
@@ -198,8 +242,10 @@ static inline void check_heartbeat(uns8 proc_id, Flag final) {
     time_t  cur_time         = time(NULL);
     double  cum_ipc          = (double)inst_count[proc_id] / cycle_count;
     Counter total_inst_count = 0;
-    for(uns proc_id = 0; proc_id < NUM_CORES; proc_id++)
-      total_inst_count += inst_count[proc_id];
+    for(uns proc_id = 0; proc_id < NUM_CORES; proc_id++) {
+      total_inst_count += USE_FETCHED_COUNT ?
+                          inst_count_fetched[proc_id] : inst_count[proc_id];
+    }
 #if HEARTBEAT_PRINT_CPS
     double int_khz = (double)HEARTBEAT_INTERVAL /
                      (cur_time - heartbeat_last_time) / 1000;
@@ -233,6 +279,53 @@ static inline void check_heartbeat(uns8 proc_id, Flag final) {
                   "KIPS)\n",
                   proc_id, unsstr64(inst_count[proc_id]), unsstr64(cycle_count),
                   unsstr64(sim_time), cum_ipc, cum_ipc, cum_khz);
+          FILE* fp = fopen("per_branch_stats.csv", "w");
+          Per_Branch_Stat** entries = (Per_Branch_Stat**) hash_table_flatten(&per_branch_stat, NULL);
+          fprintf(fp, "cf_type,addr,target,bpu_hit_uc_hit,bpu_hit_uc_miss,mispred_uc_hit,"
+                  "mispred_uc_miss,misfetch_uc_hit,misfetch_uc_miss,btb_miss_uc_hit,"
+                  "btb_miss_uc_miss,other_recovery_uc_hit,other_recovery_uc_miss,"
+                  "recover_redirect_extra_fetch_latency\n");
+          for (int i=0; i<per_branch_stat.count; i++) {
+            Per_Branch_Stat* entry = entries[i];
+            fprintf(fp, "%i,%llx,%llx,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i\n", entry->cf_type, entry->addr, 
+              entry->target, entry->bpu_hit_uc_hit_on_path, entry->bpu_hit_uc_miss_on_path, entry->mispred_uc_hit,
+              entry->mispred_uc_miss, entry->misfetch_uc_hit, entry->misfetch_uc_miss, 
+              entry->btb_miss_uc_hit, entry->btb_miss_uc_miss, entry->other_recovery_uc_hit,
+              entry->other_recovery_uc_miss, entry->recover_redirect_extra_fetch_latency);
+          }
+          free(entries);
+
+          // Dump uop queue fill time stats. One line for each size, how many cycles it took to reach after resteer.
+          fp = fopen("uop_queue_fill_cycles.csv", "w");
+          for (int fill = 0; fill < UOP_QUEUE_CAPACITY_MAX_MEASURED; fill++) {
+            List* dist = &uop_queue_fill_time.time_for_size[fill].cycles;
+            Counter* node = list_start_head_traversal(dist);
+            while (node) {
+              fprintf(fp, "%llu,", *node);
+              node = list_next_element(dist);
+            }
+            fprintf(fp, "\n");
+          }
+          fp = fopen("uop_queue_fill_pws.csv", "w");
+          for (int fill = 0; fill < UOP_QUEUE_CAPACITY_MAX_MEASURED; fill++) {
+            List* dist = &uop_queue_fill_time.time_for_size[fill].pws;
+            Counter* node = list_start_head_traversal(dist);
+            while (node) {
+              fprintf(fp, "%llu,", *node);
+              node = list_next_element(dist);
+            }
+            fprintf(fp, "\n");
+          }
+          fp = fopen("uop_queue_fill_unique_pws.csv", "w");
+          for (int fill = 0; fill < UOP_QUEUE_CAPACITY_MAX_MEASURED; fill++) {
+            List* dist = &uop_queue_fill_time.time_for_size[fill].unique_pws;
+            Counter* node = list_start_head_traversal(dist);
+            while (node) {
+              fprintf(fp, "%llu,", *node);
+              node = list_next_element(dist);
+            }
+            fprintf(fp, "\n");
+          }
           break;
 
         default:
@@ -241,8 +334,10 @@ static inline void check_heartbeat(uns8 proc_id, Flag final) {
     } else if(!opt2_in_use() || opt2_is_leader()) {
       fprintf(mystdout, "** Heartbeat: %3d%% -- { ",
               (int)(progress_frac * 100.0));
-      for(uns proc_id = 0; proc_id < NUM_CORES; proc_id++)
-        fprintf(mystdout, "%lld ", inst_count[proc_id]);
+      for(uns proc_id = 0; proc_id < NUM_CORES; proc_id++) {
+        fprintf(mystdout, "%lld ", USE_FETCHED_COUNT ?
+                                  inst_count_fetched[proc_id] : inst_count[proc_id]);
+      }
       fprintf(mystdout, "} -- %.2f KIPS (%.2f KIPS)\n", int_khz, cum_khz);
       fflush(mystdout);
       heartbeat_last_time        = cur_time;
@@ -319,9 +414,11 @@ static inline double sim_progress(void) {
 
   double inst_limit_progress = 1.0;
   for(uns proc_id = 0; proc_id < NUM_CORES; proc_id++) {
+    Counter inst_count_to_use = USE_FETCHED_COUNT ?
+                                inst_count_fetched[proc_id] : inst_count[proc_id];
     inst_limit_progress = MIN2(
       inst_limit_progress,
-      (double)inst_count[proc_id] / (double)inst_limit[proc_id]);
+      (double)inst_count_to_use / (double)inst_limit[proc_id]);
   }
 
   return MAX2(sim_limit_progress, inst_limit_progress);
@@ -402,6 +499,8 @@ void init_global_counter() {
   memset(op_count, 0, sizeof(Counter) * NUM_CORES);
   inst_count = (Counter*)malloc(sizeof(Counter) * NUM_CORES);
   memset(inst_count, 0, sizeof(Counter) * NUM_CORES);
+  inst_count_fetched = (Counter*)malloc(sizeof(Counter) * NUM_CORES);
+  memset(inst_count_fetched, 0, sizeof(Counter) * NUM_CORES);
   uop_count = (Counter*)malloc(sizeof(Counter) * NUM_CORES);
   ;
   memset(uop_count, 0, sizeof(Counter) * NUM_CORES);
@@ -427,6 +526,12 @@ void init_global_counter() {
   memset(sim_done_last_cycle_count, 0, sizeof(Counter) * NUM_CORES);
   sim_count = (uns*)malloc(sizeof(uns) * NUM_CORES);
   memset(sim_count, 0, sizeof(uns) * NUM_CORES);
+
+  period_last_inst_count = (Counter*)malloc(sizeof(Counter) * NUM_CORES);
+  memset(period_last_inst_count, 0, sizeof(Counter) * NUM_CORES);
+
+  warmup_dump_done = (Flag*)malloc(sizeof(Flag) * NUM_CORES);
+  memset(warmup_dump_done, 0, sizeof(Flag) * NUM_CORES);
 }
 
 /**************************************************************************************/
@@ -647,6 +752,7 @@ void full_sim() {
 
   init_op_pool();
   unique_count = 1;
+  init_icache_trace(); //must happen after init_op_pool
 
   sim_limit   = trigger_create("SIM_LIMIT", SIM_LIMIT, TRIGGER_ONCE);
   clear_stats = trigger_create("CLEAR_STATS", CLEAR_STATS, TRIGGER_ONCE);
@@ -683,13 +789,26 @@ void full_sim() {
     any_sim_done = FALSE;
     for(proc_id = 0; proc_id < NUM_CORES; proc_id++) {
       Flag reachedInstLimit = (INST_LIMIT &&
-                               inst_count[proc_id] >= inst_limit[proc_id]);
+                               (USE_FETCHED_COUNT ?
+                                inst_count_fetched[proc_id] >= inst_limit[proc_id] :
+                                inst_count[proc_id] >= inst_limit[proc_id])
+                               );
       if(SIM_MODEL != DUMB_MODEL && DUMB_CORE_ON && DUMB_CORE == proc_id)
         continue;
       if(!sim_done[proc_id] && (retired_exit[proc_id] || reachedInstLimit)) {
         if(model->per_core_done_func)
           model->per_core_done_func(proc_id);
-        dump_stats(proc_id, TRUE, global_stat_array[proc_id], NUM_GLOBAL_STATS);
+        if(FDIP_ENABLE) {
+          print_cl_info(proc_id);
+          INC_STAT_EVENT(proc_id, FDIP_AVG_FTQ_OCCUPANCY_OPS, get_fdip_ftq_occupancy_ops(proc_id));
+          INC_STAT_EVENT(proc_id, FDIP_AVG_FTQ_OCCUPANCY, get_fdip_ftq_occupancy(proc_id));
+        }
+        if(EIP_ENABLE) {
+          print_eip_stats(proc_id);
+        }
+        if (PERIODIC_DUMP == FALSE) {
+          dump_stats(proc_id, TRUE, global_stat_array[proc_id], NUM_GLOBAL_STATS);
+        }
         sim_done[proc_id] = TRUE;
         any_sim_done      = TRUE;
         check_heartbeat(proc_id, TRUE);
@@ -738,10 +857,14 @@ void full_sim() {
 
   for(proc_id = 0; proc_id < NUM_CORES; proc_id++) {
     if(!sim_done[proc_id]) {
-      dump_stats(proc_id, TRUE, global_stat_array[proc_id], NUM_GLOBAL_STATS);
+      if (PERIODIC_DUMP == FALSE) {
+        dump_stats(proc_id, TRUE, global_stat_array[proc_id], NUM_GLOBAL_STATS);
+      }
       check_heartbeat(proc_id, TRUE);
     }
   }
+
+  //fdip_print_hash_tables();
 
   trigger_free(sim_limit);
   trigger_free(clear_stats);
@@ -749,3 +872,9 @@ void full_sim() {
 
 
 /**************************************************************************************/
+#ifdef ENABLE_PT_MEMTRACE
+/* trace_bbv: This is the main loop for extracting basic block vectors from the trace.*/
+void extract_basic_block_vectors() {
+  frontend_extract_basic_block_vectors();
+}
+#endif

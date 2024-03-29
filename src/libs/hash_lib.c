@@ -38,14 +38,22 @@
 
 #include "debug/debug.param.h"
 
-
 /**************************************************************************************/
 /* Macros */
 
 #define DEBUG(args...) _DEBUG(DEBUG_HASH_LIB, ##args)
 
-#define HASH_INDEX(table, key) (((uns)(key)) % (table)->buckets)
-
+int64 HASH_INDEX(const Hash_Table* table, int64 key);
+int64 HASH_INDEX(const Hash_Table*  table, int64 key) {
+  int64_t mask = (~0UL) % table->buckets;
+  int64_t hash = 0;
+  int log2 = 64 - __builtin_clzl(table->buckets);
+  for (int i = 0; i < 64; i += log2) {
+    hash ^= (key & mask);
+    key = key >> log2;
+  }
+  return hash;
+}
 
 /**************************************************************************************/
 // Global variables

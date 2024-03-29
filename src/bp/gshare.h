@@ -36,6 +36,7 @@ void bp_gshare_spec_update(Op*);
 void bp_gshare_update(Op*);
 void bp_gshare_retire(Op*);
 void bp_gshare_recover(Recovery_Info*);
+uns8 bp_gshare_full(uns);
 
 #ifdef __cplusplus
 }

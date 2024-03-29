@@ -76,7 +76,7 @@ typedef int64 SCounter;
 typedef int64 Quad;
 typedef int32 Long;
 typedef int16 Word;
-typedef int8  Byte;
+//typedef int8  Byte;
 typedef uns64 UQuad;
 typedef uns32 ULong;
 typedef uns16 UWord;

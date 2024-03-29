@@ -49,4 +49,18 @@ static inline void scarab_end() {
   printf("Scarab: Ending simulation\n");
 }
 
+static inline void scarab_roi_dump_begin() {
+  printf("Scarab: inject roi stats dump begin marker\n");
+  COMPILER_BARRIER();
+  __asm__ __volatile__("xchg %%rbx, %%rbx;" : : "c"(SCARAB_MARKERS_PIN_BEGIN));
+  COMPILER_BARRIER();
+}
+
+static inline void scarab_roi_dump_end() {
+  printf("Scarab: inject roi stats dump end marker\n");
+  COMPILER_BARRIER();
+  __asm__ __volatile__("xchg %%rdx, %%rdx;" : : "c"(SCARAB_MARKERS_PIN_END));
+  COMPILER_BARRIER();
+}
+
 #endif

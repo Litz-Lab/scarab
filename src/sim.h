@@ -32,7 +32,15 @@
 /**************************************************************************************/
 /* Types */
 
-enum sim_mode_enum { UOP_SIM_MODE, FULL_SIM_MODE, NUM_SIM_MODES };
+enum sim_mode_enum {
+  UOP_SIM_MODE,
+  FULL_SIM_MODE,
+#ifdef ENABLE_PT_MEMTRACE
+  TRACE_BBV_MODE,
+  TRACE_BBV_DISTRIBUTED_MODE,
+#endif
+  NUM_SIM_MODES
+};
 
 enum operating_mode_enum {
   SIMULATION_MODE,
@@ -59,6 +67,9 @@ void full_sim(void);
 void handle_SIGINT(int);
 void close_output_streams(void);
 
+#ifdef ENABLE_PT_MEMTRACE
+void extract_basic_block_vectors(void);
+#endif
 
 /**************************************************************************************/
 

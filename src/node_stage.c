@@ -54,6 +54,7 @@
 #include "statistics.h"
 
 #include "bp/tagescl.h"
+#include "decoupled_frontend.h"
 
 /* Macros */
 
@@ -61,7 +62,7 @@
 #define PRINT_RETIRED_UOP(proc_id, args...) \
   _DEBUG_LEAN(proc_id, DEBUG_RETIRED_UOPS, ##args)
 
-#define DEBUG_NODE_WIDTH ISSUE_WIDTH
+#define DEBUG_NODE_WIDTH ISSUE_WIDTH + UOP_CACHE_ADDITIONAL_ISSUE_BANDWIDTH
 #define OP_IS_IN_RS(op) (op->state >= OS_IN_RS && op->state < OS_SCHEDULED)
 
 /**************************************************************************************/
@@ -299,7 +300,10 @@ void debug_print_node_table() {
         print_open_op_array(GLOBAL_DEBUG_STREAM, temp, DEBUG_NODE_WIDTH,
                             DEBUG_NODE_WIDTH);
       }
-      memset(temp, 0, DEBUG_NODE_WIDTH * sizeof(Op*));
+      // For some reason this does not zero out the entire array.
+      // (Assert fails and verified in gdb).
+      // memset(temp, 0, DEBUG_NODE_WIDTH * sizeof(Op*));
+      for (int i=0; i<DEBUG_NODE_WIDTH; i++) temp[i] = 0;
       empty = TRUE;
     }
   }
@@ -781,15 +785,20 @@ void node_retire() {
       inst_count[node->proc_id]++;
       STAT_EVENT(op->proc_id, NODE_INST_COUNT);
 
+      if(op->fetched_instruction) {
+        inst_count_fetched[node->proc_id]++;
+        STAT_EVENT(op->proc_id, NODE_INST_COUNT_FETCHED);
+      }
+
       Flag retire_op = IS_CALLSYS(op->table_info) ||
                        op->table_info->bar_type & BAR_FETCH ||
                        (inst_count[node->proc_id] % NODE_RETIRE_RATE == 0);
 
       if(op->exit) {
         retired_exit[op->proc_id] = TRUE;
-        frontend_retire(op->proc_id, -1);
+        decoupled_fe_retire(op, op->proc_id, -1);
       } else if(retire_op) {
-        frontend_retire(op->proc_id, op->inst_uid);
+        decoupled_fe_retire(op, op->proc_id, op->inst_uid);
       }
     }
     uop_count[node->proc_id]++;
@@ -826,6 +835,9 @@ void node_retire() {
     STAT_EVENT(op->proc_id, RET_OP_EXEC_COUNT_0 + MIN2(32, op->exec_count));
 
     op->retire_cycle = cycle_count;
+
+    // free the previous register entries with same architectural destination
+    rename_table_commit(op);
 
     if(model->op_retired_hook)
       model->op_retired_hook(op);

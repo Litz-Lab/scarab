@@ -73,19 +73,10 @@ void init_thread(Thread_Data* td, char* argv[], char* envp[]) {
 
 void recover_thread(Thread_Data* td, Addr new_pc, Counter op_num,
                     uns64 inst_uid, Flag remain_wrongpath) {
+  rename_table_recover(op_num);
   recover_seq_op_list(td, op_num);
-  if(FETCH_OFF_PATH_OPS) {
-    if(remain_wrongpath) {
-      frontend_redirect(td->proc_id, inst_uid, new_pc);
-    } else {
-      frontend_recover(td->proc_id, inst_uid);
-    }
-    ASSERTM(td->proc_id, new_pc == frontend_next_fetch_addr(td->proc_id),
-            "Scarab's recovery addr 0x%llx does not match frontend's recovery "
-            "addr 0x%llx\n",
-            new_pc, frontend_next_fetch_addr(td->proc_id));
-  }
   recover_map();
+  ASSERT(td->proc_id, !remain_wrongpath);
 }
 
 

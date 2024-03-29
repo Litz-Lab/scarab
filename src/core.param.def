@@ -146,8 +146,9 @@ DEF_PARAM(fu_types, FU_TYPES, char*, string, "0, 0, 0, 0", )
 DEF_PARAM(decode_cycles, DECODE_CYCLES, uns, uns, 1, )
 DEF_PARAM(map_cycles, MAP_CYCLES, uns, uns, 1, )
 
-DEF_PARAM(extra_recovery_cycles, EXTRA_RECOVERY_CYCLES, uns, uns, 0, )
+DEF_PARAM(icache_latency, ICACHE_LATENCY, uns, uns, 3, )
 DEF_PARAM(extra_redirect_cycles, EXTRA_REDIRECT_CYCLES, uns, uns, 0, )
+DEF_PARAM(extra_recovery_cycles, EXTRA_RECOVERY_CYCLES, uns, uns, 0, )
 DEF_PARAM(extra_callsys_cycles, EXTRA_CALLSYS_CYCLES, uns, uns, 20,
           const) /* const */
 DEF_PARAM(die_on_callsys, DIE_ON_CALLSYS, Flag, Flag, FALSE, )
@@ -288,5 +289,14 @@ DEF_PARAM(cbp_trace_r63, CBP_TRACE_R63, char*, string, NULL, )
 
 DEF_PARAM(memtrace_modules_log, MEMTRACE_MODULES_LOG, char*, string, NULL, )
 
+DEF_PARAM(fe_ftq_block_size_log, FE_FTQ_BLOCK_SIZE_LOG, uns, uns, 5, )
+DEF_PARAM(fe_ftq_block_num, FE_FTQ_BLOCK_NUM, uns, uns, 32, )
+DEF_PARAM(fe_blocks_per_cycle, FE_BLOCKS_PER_CYCLE, uns, uns, 2, )
+
 DEF_PARAM(dumb_core_on, DUMB_CORE_ON, Flag, Flag, FALSE, )
 DEF_PARAM(dumb_core, DUMB_CORE, uns, uns, 1, )
+
+DEF_PARAM(dcache_miss_rate, DCACHE_MISS_RATE, uns, uns, 10, )
+DEF_PARAM(l1_miss_rate, L1_MISS_RATE, uns, uns, 10, )
+
+DEF_PARAM(memtrace_buf_size, MEMTRACE_BUF_SIZE, uns, uns, 0, )

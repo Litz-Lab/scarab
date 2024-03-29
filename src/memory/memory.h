@@ -76,6 +76,12 @@ typedef struct L1_Data_struct {
 
 typedef L1_Data MLC_Data; /* Use the same data structure for simplicity */
 
+typedef enum Mem_Queue_Req_Result_enum {
+  FAILED,
+  SUCCESS_NEW,
+  SUCCESS_MERGED,
+} Mem_Queue_Req_Result;
+
 typedef enum Mem_Queue_Type_enum {
   QUEUE_L1        = 1 << 0,
   QUEUE_BUS_OUT   = 1 << 1,
@@ -233,6 +239,7 @@ Flag new_mem_req(Mem_Req_Type type, uns8 proc_id, Addr addr, uns size,
                  Counter unique_num, Pref_Req_Info*);
 void mem_free_reqbuf(Mem_Req* req);
 void mem_complete_bus_in_access(Mem_Req* req, Counter priority);
+void print_req_buffer(void);
 void print_mem_queue(Mem_Queue_Type queue_type);
 Flag new_mem_dc_wb_req(Mem_Req_Type type, uns8 proc_id, Addr addr, uns size,
                        uns delay, Op* op, Flag done_func(Mem_Req*),
@@ -259,6 +266,11 @@ void wp_process_reqbuf_match(Mem_Req* req, Op* op);
 // batch scheduler
 uns num_chip_demands(void);
 uns num_offchip_stall_reqs(uns proc_id);
+
+Mem_Req* mem_search_reqbuf_wrapper(
+  uns8 proc_id, Addr addr, Mem_Req_Type type, uns size,
+  Flag* demand_hit_prefetch, Flag* demand_hit_writeback, uns queues_to_search,
+  Mem_Queue_Entry** queue_entry, Flag* ramulator_match);
 
 /**************************************************************************************/
 /* Externs */

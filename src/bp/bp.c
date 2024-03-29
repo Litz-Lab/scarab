@@ -37,7 +37,6 @@
 
 #include "bp//bp_conf.h"
 #include "bp/bp.h"
-//#include "bp/bp_dir_mech.h"
 #include "bp/bp_targ_mech.h"
 #include "bp/cbp_to_scarab.h"
 #include "bp/gshare.h"
@@ -46,12 +45,19 @@
 #include "libs/cache_lib.h"
 #include "model.h"
 #include "thread.h"
+#include "uop_cache.h"
+#include "prefetcher/branch_misprediction_table.h"
+#include "icache_stage.h"
 
 #include "bp/bp.param.h"
 #include "core.param.h"
 #include "debug/debug.param.h"
 #include "frontend/pin_trace_fe.h"
 #include "statistics.h"
+#include "sim.h"
+
+#include "prefetcher/pref.param.h"
+#include "prefetcher/fdip_new.h"
 
 /******************************************************************************/
 /* include the table of possible branch predictors */
@@ -70,7 +76,8 @@ extern void tc_do_stat(Op*, Flag);
 
 #define DEBUG(proc_id, args...) _DEBUG(proc_id, DEBUG_BP, ##args)
 #define DEBUG_BTB(proc_id, args...) _DEBUG(proc_id, DEBUG_BTB, ##args)
-
+/* Adapt when changing stats */
+#define NUM_BR_STATS 31
 
 /******************************************************************************/
 /* Global Variables */
@@ -78,7 +85,8 @@ extern void tc_do_stat(Op*, Flag);
 Bp_Recovery_Info* bp_recovery_info = NULL;
 Bp_Data*          g_bp_data        = NULL;
 Flag              USE_LATE_BP      = FALSE;
-
+extern List       op_buf;
+extern uns        operating_mode;
 
 /******************************************************************************/
 // Local prototypes
@@ -111,6 +119,9 @@ void init_bp_recovery_info(uns8              proc_id,
   new_bp_recovery_info->redirect_cycle = MAX_CTR;
 
   bp_recovery_info = new_bp_recovery_info;
+
+  init_hash_table(&per_branch_stat, "Per Branch Hit/Miss and Recovery/Redirect Stall cycles",
+                  15000000, sizeof(Per_Branch_Stat));
 }
 
 
@@ -123,17 +134,28 @@ void bp_sched_recovery(Bp_Recovery_Info* bp_recovery_info, Op* op,
                        Counter cycle, Flag late_bp_recovery,
                        Flag force_offpath) {
   ASSERT(op->proc_id, bp_recovery_info->proc_id == op->proc_id);
+  ASSERT(0, !op->off_path);
+  if (op->oracle_info.recover_at_exec) {
+    INC_STAT_EVENT(0, SCHEDULED_EXEC_LAT, cycle_count - op->recovery_info.predict_cycle);
+    STAT_EVENT(0, SCHEDULED_EXEC_RECOVERIES);
+  }
+  else if (op->oracle_info.recover_at_decode) {
+    INC_STAT_EVENT(0, SCHEDULED_DECODE_LAT, cycle_count - op->recovery_info.predict_cycle);
+    STAT_EVENT(0, SCHEDULED_DECODE_RECOVERIES);
+  }
 
   if(bp_recovery_info->recovery_cycle == MAX_CTR ||
      op->op_num <= bp_recovery_info->recovery_op_num) {
     const Addr next_fetch_addr = op->oracle_info.npc;
-    const uns  latency         = late_bp_recovery ? LATE_BP_LATENCY :
-                                           1 + EXTRA_RECOVERY_CYCLES;
+    ASSERT(0, op->oracle_info.npc);
+    Flag uc_hit = in_uop_cache(next_fetch_addr, FALSE, op->off_path);
+    const uns latency = late_bp_recovery ? LATE_BP_LATENCY : 1;
     DEBUG(
       bp_recovery_info->proc_id,
       "Recovery signaled for op_num:%s @ 0x%s  next_fetch:0x%s offpath:%d\n",
       unsstr64(op->op_num), hexstr64s(op->inst_info->addr),
       hexstr64s(next_fetch_addr), op->off_path);
+    inc_bstat_miss(op, uc_hit);
     ASSERT(op->proc_id, !op->oracle_info.recovery_sch);
     op->oracle_info.recovery_sch          = TRUE;
     bp_recovery_info->recovery_cycle      = cycle + latency;
@@ -166,6 +188,86 @@ void bp_sched_recovery(Bp_Recovery_Info* bp_recovery_info, Op* op,
   }
 }
 
+void inc_bstat_fetched(Op* op) {
+  Flag new_entry;
+  int64 key = convert_to_cmp_addr(op->table_info->cf_type, op->inst_info->addr);
+  Per_Branch_Stat* bstat = (Per_Branch_Stat*) hash_table_access_create(&per_branch_stat, key, &new_entry);
+  if (new_entry) {
+    memset(bstat, 0, sizeof(*bstat));
+    bstat->addr = op->inst_info->addr;
+    bstat->cf_type = op->table_info->cf_type;
+  }
+
+  if (!op->off_path) {
+    if (in_uop_cache(op->oracle_info.npc, FALSE, op->off_path)) {
+      bstat->bpu_hit_uc_hit_on_path += 1;
+    }else {
+      bstat->bpu_hit_uc_miss_on_path += 1;
+      if (!in_icache(op->oracle_info.npc)) bstat->bpu_hit_uc_ic_miss_on_path += 1;
+    }
+  }
+  else {
+    if (in_uop_cache(op->oracle_info.npc, FALSE, op->off_path)) {
+      bstat->bpu_hit_uc_hit_off_path += 1;
+    }else {
+      bstat->bpu_hit_uc_miss_off_path += 1;
+      if (!in_icache(op->oracle_info.npc)) bstat->bpu_hit_uc_ic_miss_off_path += 1;
+    }
+  }
+  // target if taken
+  if (op->oracle_info.pred == TAKEN && !(op->oracle_info.recover_at_exec || op->oracle_info.recover_at_decode))
+    bstat->target = op->oracle_info.npc;
+}
+
+void inc_bstat_miss(Op* op, Flag uc_hit) {
+  int64 key = convert_to_cmp_addr(op->table_info->cf_type, op->inst_info->addr);
+  Per_Branch_Stat* bstat = (Per_Branch_Stat*) hash_table_access(&per_branch_stat, key);
+  ASSERT(bp_recovery_info->proc_id, bstat);
+
+  const uns8 mispred = (op->table_info->cf_type == CF_CBR) && !op->oracle_info.btb_miss;
+  const uns8 misfetch = op->oracle_info.misfetch;
+  const uns8 btb_miss = op->oracle_info.btb_miss;
+
+  ASSERT(bp_recovery_info->proc_id, op->oracle_info.recover_at_decode || op->oracle_info.recover_at_exec);
+
+  if (op->off_path)
+    return;  // TODO(peterbraun): add off-path branch stats
+
+  if (!(mispred | misfetch | btb_miss)) {
+    //FIXME: Add stats for recovering syscalls
+    //ASSERT(bp_recovery_info->proc_id, IS_CALLSYS(op->table_info) || op->table_info->bar_type & BAR_FETCH);
+    return;
+  }
+
+  const Flag in_ic = in_icache(op->oracle_info.npc);
+
+  if (op->fetched_from_uop_cache && op->oracle_info.recover_at_decode)
+    STAT_EVENT(bp_recovery_info->proc_id, RECOVER_AT_DECODE_BR_FROM_UOC);
+
+  if (uc_hit) {
+    if (mispred)        bstat->mispred_uc_hit += 1;
+    else if (misfetch)  bstat->misfetch_uc_hit += 1;
+    else if (btb_miss)  bstat->btb_miss_uc_hit += 1;
+    else                bstat->other_recovery_uc_hit += 1;
+    STAT_EVENT(bp_recovery_info->proc_id, RECOVERED_FROM_UOC);
+  } else {
+    if (mispred) {
+      bstat->mispred_uc_miss += 1;
+      if (!in_ic) bstat->mispred_uc_ic_miss += 1;
+    } else if (misfetch) {
+      bstat->misfetch_uc_miss += 1;
+      if (!in_ic) bstat->misfetch_uc_ic_miss += 1;
+    } else if (btb_miss){
+      bstat->btb_miss_uc_miss += 1;
+      if (!in_ic) bstat->btb_miss_uc_ic_miss += 1;
+    }
+    else {
+      bstat->other_recovery_uc_miss += 1;
+      if (!in_ic) bstat->other_recovery_uc_ic_miss += 1;
+    }
+    bstat->recover_redirect_extra_fetch_latency += ICACHE_LATENCY - UOP_CACHE_LATENCY;
+  }
+}
 
 /******************************************************************************/
 /* bp_sched_redirect: called on an op that caused the fetch stage to suspend
@@ -177,7 +279,10 @@ void bp_sched_redirect(Bp_Recovery_Info* bp_recovery_info, Op* op,
      op->op_num < bp_recovery_info->redirect_op_num) {
     DEBUG(bp_recovery_info->proc_id, "Redirect signaled for op_num:%s @ 0x%s\n",
           unsstr64(op->op_num), hexstr64s(op->inst_info->addr));
-    bp_recovery_info->redirect_cycle = cycle + 1 + EXTRA_REDIRECT_CYCLES +
+
+    Flag uc_hit = in_uop_cache(op->oracle_info.npc, FALSE, op->off_path);
+    inc_bstat_miss(op, uc_hit); // shouldn't double count if both btb miss and predictor wrong.
+    bp_recovery_info->redirect_cycle = cycle + 1 +
                                        (op->table_info->cf_type == CF_SYS ?
                                           EXTRA_CALLSYS_CYCLES :
                                           0);
@@ -248,21 +353,28 @@ void init_bp_data(uns8 proc_id, Bp_Data* bp_data) {
   }
 }
 
+Flag bp_is_predictable(Bp_Data* bp_data, uns proc_id) {
+  return !bp_data->bp->full_func(proc_id);
+}
+
 
 /******************************************************************************/
 /* bp_predict_op:  predicts the target of a control flow instruction */
 
 Addr bp_predict_op(Bp_Data* bp_data, Op* op, uns br_num, Addr fetch_addr) {
-  Addr addr = fetch_addr;
-  /*Addr line_addr;*/
   Addr* btb_target;
+  Addr  ibp_target;
   Addr  pred_target;
+  Flag  btb_miss_nt = FALSE;
+  const Addr pc_plus_offset = ADDR_PLUS_OFFSET(
+    op->inst_info->addr, op->inst_info->trace_info.inst_size);
 
   ASSERT(bp_data->proc_id, bp_data->proc_id == op->proc_id);
   ASSERT(bp_data->proc_id, op->table_info->cf_type);
 
   /* set address used to predict branch */
-  op->oracle_info.pred_addr         = addr;
+  // op->oracle_info.pred_addr         = addr;
+  op->oracle_info.pred_addr         = op->inst_info->addr;
   op->oracle_info.btb_miss_resolved = FALSE;
   op->cf_within_fetch               = br_num;
 
@@ -281,7 +393,7 @@ Addr bp_predict_op(Bp_Data* bp_data, Op* op, uns br_num, Addr fetch_addr) {
   op->recovery_info.cf_type          = op->table_info->cf_type;
   op->recovery_info.oracle_dir       = op->oracle_info.dir;
   op->recovery_info.branchTarget     = op->oracle_info.target;
-
+  op->recovery_info.predict_cycle    = cycle_count;
 
   bp_data->bp->timestamp_func(op);
   if(USE_LATE_BP) {
@@ -319,6 +431,9 @@ Addr bp_predict_op(Bp_Data* bp_data, Op* op, uns br_num, Addr fetch_addr) {
     op->oracle_info.late_mispred  = FALSE;
     op->oracle_info.btb_miss      = FALSE;
     op->oracle_info.no_target     = FALSE;
+    // Syscalls cause flush of later ops at decode
+    op->oracle_info.recover_at_decode = TRUE;
+    op->oracle_info.recover_at_exec = FALSE;
     ASSERT_PROC_ID_IN_ADDR(op->proc_id, op->oracle_info.npc);
     op->oracle_info.pred_npc      = op->oracle_info.npc;
     op->oracle_info.late_pred_npc = op->oracle_info.npc;
@@ -328,6 +443,8 @@ Addr bp_predict_op(Bp_Data* bp_data, Op* op, uns br_num, Addr fetch_addr) {
     }
     return op->oracle_info.npc;
   }
+  else
+    ASSERT(0, !(op->table_info->bar_type & BAR_FETCH));
   // }}}
 
   // {{{ access btb for branch information and target
@@ -336,29 +453,85 @@ Addr bp_predict_op(Bp_Data* bp_data, Op* op, uns br_num, Addr fetch_addr) {
   // In the event of a btb miss, the branch will predicted as
   // normal, but will incur the redirect penalty for missing in the
   // btb.  btb_miss and pred_target are set appropriately.
-
+  op->oracle_info.no_target = TRUE;
+  op->oracle_info.misfetch      = FALSE;
   btb_target = bp_data->bp_btb->pred_func(bp_data, op);
   if(btb_target) {
     // btb hit
     op->oracle_info.btb_miss  = FALSE;
     op->oracle_info.no_target = FALSE;
     pred_target               = *btb_target;
-  } else {
-    // btb miss
-    op->oracle_info.btb_miss  = TRUE;
-    op->oracle_info.no_target = TRUE;
-    pred_target               = op->oracle_info.target;
+    if (op->table_info->cf_type != CF_ICO && op->table_info->cf_type != CF_RET &&
+        !(op->table_info->bar_type & BAR_FETCH)) {
+      STAT_EVENT(op->proc_id, BTB_CORRECT + op->off_path * NUM_BR_STATS);
+    }
   }
-  // }}}
+  else {
+    // In case of BTB miss, execute fall-through
+    pred_target = pc_plus_offset;
+    if (op->table_info->cf_type != CF_ICO && op->table_info->cf_type != CF_RET &&
+        !(op->table_info->bar_type & BAR_FETCH)) {
+      STAT_EVENT(op->proc_id, BTB_INCORRECT + op->off_path * NUM_BR_STATS);
+    }
 
+    // In the case where fall-through == branch target, ignore BTB miss
+    // This almost never happes but if it does, without the fix below, it would cause
+    // recovery where the recovery address is incorrect
+    if (pc_plus_offset == op->oracle_info.target) {
+      op->oracle_info.btb_miss  = FALSE;
+      op->oracle_info.no_target = FALSE;
+      op->oracle_info.pred      = TAKEN;
+      btb_target = &pred_target; //make !NULL
+      if (op->table_info->cf_type != CF_ICO && op->table_info->cf_type != CF_RET &&
+          !(op->table_info->bar_type & BAR_FETCH)) {
+        STAT_EVENT(op->proc_id, BTB_INCORRECT_BUT_TARGET_CORRECT + op->off_path * NUM_BR_STATS);
+      }
+    }
+    else {
+      // btb miss
+      op->oracle_info.btb_miss  = TRUE;
+    }
+  }
+  // overwrite pred_target with indirect predictor
+  if(ENABLE_IBP && (op->table_info->cf_type == CF_IBR || op->table_info->cf_type == CF_ICALL)) {
+    ibp_target = bp_data->bp_ibtb->pred_func(bp_data, op);
+    if(ibp_target) {
+      pred_target               = ibp_target;
+      op->oracle_info.no_target = FALSE;
+      op->oracle_info.ibp_miss  = FALSE;
+      STAT_EVENT(op->proc_id, IBTB_CORRECT + op->off_path * NUM_BR_STATS);
+    }
+    else {
+      op->oracle_info.ibp_miss  = TRUE;
+      STAT_EVENT(op->proc_id, IBTB_INCORRECT + op->off_path * NUM_BR_STATS);
+    }
+  }
+
+  // }}}
   // {{{ handle predictions for individual cf types
   switch(op->table_info->cf_type) {
     case CF_BR:
-      op->oracle_info.pred      = TAKEN;
+      // BR will be predicted at decode, but fill in the info here
       op->oracle_info.late_pred = TAKEN;
+      op->oracle_info.pred_orig = TAKEN;
       if(!op->off_path)
         STAT_EVENT(op->proc_id, CF_BR_USED_TARGET_CORRECT +
                                   (pred_target != op->oracle_info.npc));
+      // On BTB hit, ensure that target is correct (no aliasing or jitted code)
+      if (btb_target && pred_target == op->oracle_info.npc) {
+        op->oracle_info.recover_at_decode = FALSE;
+        op->oracle_info.recover_at_exec = FALSE;
+        op->oracle_info.pred = TAKEN;
+        op->oracle_info.pred_npc = pred_target;
+        STAT_EVENT(op->proc_id, BR_CORRECT + op->off_path * NUM_BR_STATS);
+       }
+      else {
+        op->oracle_info.recover_at_decode = TRUE;
+        op->oracle_info.recover_at_exec = FALSE;
+        op->oracle_info.pred = NOT_TAKEN;
+        op->oracle_info.pred_npc = pc_plus_offset;
+        STAT_EVENT(op->proc_id, BR_RECOVER + op->off_path * NUM_BR_STATS);
+      }
       break;
 
     case CF_CBR:
@@ -367,17 +540,22 @@ Addr bp_predict_op(Bp_Data* bp_data, Op* op, uns br_num, Addr fetch_addr) {
 
       if(PERFECT_BP) {
         op->oracle_info.pred      = op->oracle_info.dir;
+        op->oracle_info.pred_orig = op->oracle_info.dir;
         op->oracle_info.no_target = FALSE;
       } else {
+        ASSERT(op->proc_id, !PERFECT_NT_BTB); //currently not supported
         op->oracle_info.pred = bp_data->bp->pred_func(op);
+        op->oracle_info.pred_orig = op->oracle_info.pred;
         if(USE_LATE_BP) {
           op->oracle_info.late_pred = bp_data->late_bp->pred_func(op);
         }
       }
-
       // Update history used by the rest of Scarab.
       bp_data->global_hist = (bp_data->global_hist >> 1) |
                              (op->oracle_info.pred << 31);
+
+      if(op->oracle_info.btb_miss && op->oracle_info.pred == NOT_TAKEN)
+        btb_miss_nt = TRUE;
 
       if(PERFECT_CBR_BTB ||
          (PERFECT_NT_BTB && op->oracle_info.pred == NOT_TAKEN)) {
@@ -385,13 +563,95 @@ Addr bp_predict_op(Bp_Data* bp_data, Op* op, uns br_num, Addr fetch_addr) {
         op->oracle_info.btb_miss  = FALSE;
         op->oracle_info.no_target = FALSE;
       }
+
       if(!op->off_path && op->oracle_info.pred)
         STAT_EVENT(op->proc_id, CF_CBR_USED_TARGET_CORRECT +
                                   (pred_target != op->oracle_info.npc));
+
+      // pred_target is set by BTB on hit. For CBR we may however, still want to execute fall-through
+      if (op->oracle_info.pred == NOT_TAKEN) {
+        pred_target = pc_plus_offset;
+      }
+
+      // Regular mispredict resolved at exec
+      // On dir misprediction, treat as correctly predicted if fall-through happens to match target
+      if (btb_target && op->oracle_info.dir != op->oracle_info.pred && pc_plus_offset != op->oracle_info.target) {
+        op->oracle_info.recover_at_decode = FALSE;
+        op->oracle_info.recover_at_exec = TRUE;
+        op->oracle_info.pred_npc = pred_target;
+
+        if (op->oracle_info.pred == TAKEN )
+          ASSERT(0, pred_target != pc_plus_offset);
+        if (op->oracle_info.pred == NOT_TAKEN)
+          ASSERT(0, pred_target == pc_plus_offset);
+
+        STAT_EVENT(op->proc_id, CBR_RECOVER_MISPREDICT + op->off_path * NUM_BR_STATS);
+      }
+      // Although the btb hits and cbr is correctly predicted, target address may be wrong (aliasing or jitted code)
+      else if (btb_target && pred_target != op->oracle_info.npc) {
+          op->oracle_info.recover_at_decode = TRUE;
+          op->oracle_info.recover_at_exec = FALSE;
+          op->oracle_info.pred_npc = pred_target;
+          STAT_EVENT(op->proc_id, CBR_RECOVER_MISFETCH + op->off_path * NUM_BR_STATS);
+      }
+      // Correctly predicted
+      else if (btb_target) {
+        op->oracle_info.recover_at_decode = FALSE;
+        op->oracle_info.recover_at_exec = FALSE;
+        op->oracle_info.pred_npc = pred_target;
+        STAT_EVENT(op->proc_id, CBR_CORRECT + op->off_path * NUM_BR_STATS);
+      }
+      // If BTB missed, the branch will be assumed not taken at fetch. At decode we detect
+      // the branch and will predict. There are 4 outcomes:
+      // 1. Branch is predicted taken, violating not-taken assumption, causing flush at decode
+      else if (!btb_target && op->oracle_info.pred == TAKEN && op->oracle_info.dir == TAKEN) {
+        op->oracle_info.recover_at_decode = TRUE;
+        op->oracle_info.recover_at_exec = FALSE;
+        op->oracle_info.pred = NOT_TAKEN;
+        op->oracle_info.pred_npc = pc_plus_offset;
+        STAT_EVENT(op->proc_id, CBR_RECOVER_BTB_MISS_T_T + op->off_path * NUM_BR_STATS);
+	      if (FDIP_BP_CONFIDENCE)
+          fdip_inc_cnt_btb_miss(op->proc_id);
+      }
+      // 2. Branch is predicted taken, violating not-taken asumption. This would flush at decode,
+      // however, the branch will flush again at exec when it is determined that the prediction was wrong
+      // Scarab does not support flushing twice per op. Flushing at exec should not introduce inaccuracy.
+      else if (!btb_target && op->oracle_info.pred == TAKEN && op->oracle_info.dir == NOT_TAKEN) {
+        op->oracle_info.recover_at_decode = FALSE;
+        op->oracle_info.recover_at_exec = TRUE;
+        op->oracle_info.pred = NOT_TAKEN;
+        op->oracle_info.pred_npc = pred_target; //Not accurate. At fetch it would execute pc_plus_offset, at decode would resteer frontend to pred_taken
+        STAT_EVENT(op->proc_id, CBR_RECOVER_BTB_MISS_T_NT + op->off_path * NUM_BR_STATS);
+	      if (FDIP_BP_CONFIDENCE)
+          fdip_inc_cnt_btb_miss(op->proc_id);
+      }
+      // 3. Branch is predicted not-taken causing branch to continue to exec where the flush is triggered
+      else if (!btb_target && op->oracle_info.pred == NOT_TAKEN && op->oracle_info.dir == TAKEN) {
+        op->oracle_info.recover_at_decode = FALSE;
+        op->oracle_info.recover_at_exec = TRUE;
+        op->oracle_info.pred = NOT_TAKEN;
+        op->oracle_info.pred_npc = pc_plus_offset;
+        STAT_EVENT(op->proc_id, CBR_RECOVER_BTB_MISS_NT_T + op->off_path * NUM_BR_STATS);
+	      if (FDIP_BP_CONFIDENCE)
+          fdip_inc_cnt_btb_miss(op->proc_id);
+      }
+      // 4. Branch is predicted not-taken which is correct causing no flush
+      else if (!btb_target && op->oracle_info.pred == NOT_TAKEN && op->oracle_info.dir == NOT_TAKEN) {
+        op->oracle_info.recover_at_decode = FALSE;
+        op->oracle_info.recover_at_exec = FALSE;
+        op->oracle_info.pred = NOT_TAKEN;
+        op->oracle_info.pred_npc = pc_plus_offset;
+        STAT_EVENT(op->proc_id, CBR_CORRECT_BTB_MISS_NT_NT + op->off_path * NUM_BR_STATS);
+      }
+      else {
+        //We should have matched all cases by here
+        ASSERT(op->proc_id, 0);
+      }
       break;
 
     case CF_CALL:
       op->oracle_info.pred      = TAKEN;
+      op->oracle_info.pred_orig = TAKEN;
       op->oracle_info.late_pred = TAKEN;
       if(ENABLE_CRS)
         CRS_REALISTIC ? bp_crs_realistic_push(bp_data, op) :
@@ -399,48 +659,161 @@ Addr bp_predict_op(Bp_Data* bp_data, Op* op, uns br_num, Addr fetch_addr) {
       if(!op->off_path)
         STAT_EVENT(op->proc_id, CF_CALL_USED_TARGET_CORRECT +
                                   (pred_target != op->oracle_info.npc));
+      // On BTB hit, ensure that target is correct (no aliasing or jitted code)
+      if (btb_target && pred_target == op->oracle_info.npc) {
+        op->oracle_info.recover_at_decode = FALSE;
+        op->oracle_info.recover_at_exec = FALSE;
+        op->oracle_info.pred = TAKEN;
+        op->oracle_info.pred_npc = pred_target;
+          DEBUG(bp_data->proc_id,
+        "no flush BP:  op_num:%s  off_path:%d  cf_type:%s  addr:%s  p_npc:%s  "
+        "t_npc:0x%s  btb_miss:%d  mispred:%d  misfetch:%d  no_tar:%d\n",
+        unsstr64(op->op_num), op->off_path,
+        cf_type_names[op->table_info->cf_type], hexstr64s(op->inst_info->addr),
+        hexstr64s(op->oracle_info.pred_npc), hexstr64s(op->oracle_info.npc),
+        op->oracle_info.btb_miss, op->oracle_info.mispred,
+        op->oracle_info.recover_at_exec,op->oracle_info.recover_at_decode);
+
+        ASSERT(0, op->oracle_info.pred == op->oracle_info.dir);
+        STAT_EVENT(op->proc_id, CALL_CORRECT + op->off_path * NUM_BR_STATS);
+      }
+      else {
+          DEBUG(bp_data->proc_id,
+        "flush BP:  op_num:%s  off_path:%d  cf_type:%s  addr:%s  p_npc:%s  "
+        "t_npc:0x%s  btb_miss:%d  mispred:%d  misfetch:%d  no_tar:%d predtarg %llx npc %llx\n",
+        unsstr64(op->op_num), op->off_path,
+        cf_type_names[op->table_info->cf_type], hexstr64s(op->inst_info->addr),
+        hexstr64s(op->oracle_info.pred_npc), hexstr64s(op->oracle_info.npc),
+        op->oracle_info.btb_miss, op->oracle_info.mispred,
+                op->oracle_info.recover_at_exec,op->oracle_info.recover_at_decode, pred_target, op->oracle_info.npc);
+
+        op->oracle_info.recover_at_decode = TRUE;
+        op->oracle_info.recover_at_exec = FALSE;
+        op->oracle_info.pred = NOT_TAKEN;
+        op->oracle_info.pred_npc = pc_plus_offset;
+        STAT_EVENT(op->proc_id, CALL_RECOVER + op->off_path * NUM_BR_STATS);
+      }
       break;
 
     case CF_IBR:
-      op->oracle_info.pred      = TAKEN;
-      op->oracle_info.late_pred = TAKEN;
-      if(ENABLE_IBP) {
-        Addr ibp_target = bp_data->bp_ibtb->pred_func(bp_data, op);
-        if(ibp_target) {
-          pred_target               = ibp_target;
-          op->oracle_info.no_target = FALSE;
-          op->oracle_info.ibp_miss  = FALSE;
-        } else
-          op->oracle_info.ibp_miss = TRUE;
-
-        if(!op->off_path)
-          STAT_EVENT(op->proc_id, CF_IBR_USED_TARGET_CORRECT +
-                                    (pred_target != op->oracle_info.npc));
+      if(PERFECT_BP) {
+        op->oracle_info.pred      = op->oracle_info.dir;
+        op->oracle_info.pred_orig = op->oracle_info.dir;
+        op->oracle_info.late_pred = op->oracle_info.dir;
+      } else {
+        op->oracle_info.pred      = TAKEN;
+        op->oracle_info.pred_orig = TAKEN;
+        op->oracle_info.late_pred = TAKEN;
       }
+      if(!op->off_path)
+        STAT_EVENT(op->proc_id, CF_IBR_USED_TARGET_CORRECT +
+                   (pred_target != op->oracle_info.npc));
+      if (ENABLE_IBP && ibp_target) {
+        ASSERT(op->proc_id, op->oracle_info.target == op->oracle_info.npc);
+        if (op->oracle_info.target == pred_target) {
+          op->oracle_info.recover_at_decode = FALSE;
+          op->oracle_info.recover_at_exec = FALSE;
+          op->oracle_info.pred_npc = pred_target;
+          STAT_EVENT(op->proc_id, IBR_CORRECT_IBTB + op->off_path * NUM_BR_STATS);
+        }
+        else {
+          op->oracle_info.recover_at_decode = FALSE;
+          op->oracle_info.recover_at_exec = TRUE;
+          op->oracle_info.pred_npc = pred_target;
+          STAT_EVENT(op->proc_id, IBR_RECOVER_IBTB_MISFETCH + op->off_path * NUM_BR_STATS);
+        }
+      }
+      else if (btb_target) {
+        if (op->oracle_info.target == pred_target) {
+          op->oracle_info.recover_at_decode = FALSE;
+          op->oracle_info.recover_at_exec = FALSE;
+          op->oracle_info.pred_npc = pred_target;
+          STAT_EVENT(op->proc_id, IBR_CORRECT_BTB + op->off_path * NUM_BR_STATS);
+        }
+        else {
+          op->oracle_info.recover_at_decode = FALSE;
+          op->oracle_info.recover_at_exec = TRUE;
+          op->oracle_info.pred_npc = pred_target;
+          op->oracle_info.misfetch      = TRUE;
+          STAT_EVENT(op->proc_id, IBR_RECOVER_BTB_MISFETCH + op->off_path * NUM_BR_STATS);
+        }
+      }
+      // If BTB and iBTB miss we can detect the mispredition at decode but we need to wait
+      // until exec to resolve the branch target. We would not know which target to fetch
+      // at decode so we can just recover at exec
+      else {
+        op->oracle_info.recover_at_decode = FALSE;
+        op->oracle_info.recover_at_exec = TRUE;
+        op->oracle_info.pred = NOT_TAKEN;
+        op->oracle_info.pred_npc = pc_plus_offset;
+        STAT_EVENT(op->proc_id, IBR_RECOVER_XBTB_MISS + op->off_path * NUM_BR_STATS);
+      }
+
       break;
 
     case CF_ICALL:
-      op->oracle_info.pred      = TAKEN;
-      op->oracle_info.late_pred = TAKEN;
-      if(ENABLE_IBP) {
-        Addr ibp_target = bp_data->bp_ibtb->pred_func(bp_data, op);
-        if(ibp_target) {
-          pred_target               = ibp_target;
-          op->oracle_info.no_target = FALSE;
-          op->oracle_info.ibp_miss  = FALSE;
-        } else
-          op->oracle_info.ibp_miss = TRUE;
+      if(PERFECT_BP) {
+        op->oracle_info.pred      = op->oracle_info.dir;
+        op->oracle_info.pred_orig = op->oracle_info.dir;
+        op->oracle_info.late_pred = op->oracle_info.dir;
+      } else {
+        op->oracle_info.pred      = TAKEN;
+        op->oracle_info.pred_orig = TAKEN;
+        op->oracle_info.late_pred = TAKEN;
       }
       if(ENABLE_CRS)
         CRS_REALISTIC ? bp_crs_realistic_push(bp_data, op) :
-                        bp_crs_push(bp_data, op);
+          bp_crs_push(bp_data, op);
       if(!op->off_path)
         STAT_EVENT(op->proc_id, CF_ICALL_USED_TARGET_CORRECT +
-                                  (pred_target != op->oracle_info.npc));
+                   (pred_target != op->oracle_info.npc));
+
+      if (ENABLE_IBP && ibp_target) {
+        ASSERT(op->proc_id, op->oracle_info.target == op->oracle_info.npc);
+        if (op->oracle_info.target == pred_target) {
+          op->oracle_info.recover_at_decode = FALSE;
+          op->oracle_info.recover_at_exec = FALSE;
+          op->oracle_info.pred_npc = pred_target;
+          STAT_EVENT(op->proc_id, ICALL_CORRECT_IBTB + op->off_path * NUM_BR_STATS);
+        }
+        else {
+          op->oracle_info.recover_at_decode = FALSE;
+          op->oracle_info.recover_at_exec = TRUE;
+          op->oracle_info.pred_npc = pred_target;
+          op->oracle_info.misfetch      = TRUE;
+          STAT_EVENT(op->proc_id, ICALL_RECOVER_IBTB_MISFETCH + op->off_path * NUM_BR_STATS);
+        }
+      }
+      else if (btb_target) {
+        if (op->oracle_info.target == pred_target) {
+          op->oracle_info.recover_at_decode = FALSE;
+          op->oracle_info.recover_at_exec = FALSE;
+          op->oracle_info.pred_npc = pred_target;
+          STAT_EVENT(op->proc_id, ICALL_CORRECT_BTB + op->off_path * NUM_BR_STATS);
+        }
+        else {
+          op->oracle_info.recover_at_decode = FALSE;
+          op->oracle_info.recover_at_exec = TRUE;
+          op->oracle_info.pred_npc = pred_target;
+          STAT_EVENT(op->proc_id, ICALL_RECOVER_BTB_MISFETCH + op->off_path * NUM_BR_STATS);
+        }
+      }
+      // If BTB and iBTB miss we can detect the mispredition at decode but we need to wait
+      // until exec to resolve the branch target. We would not know which target to fetch
+      // at decode so we can just recover at exec
+      else {
+        op->oracle_info.recover_at_decode = FALSE;
+        op->oracle_info.recover_at_exec = TRUE;
+        op->oracle_info.pred = NOT_TAKEN;
+        op->oracle_info.pred_npc = pc_plus_offset;
+        STAT_EVENT(op->proc_id, ICALL_RECOVER_XBTB_MISS + op->off_path * NUM_BR_STATS);
+      }
+
       break;
 
     case CF_ICO:
       op->oracle_info.pred      = TAKEN;
+      op->oracle_info.pred_orig = TAKEN;
       op->oracle_info.late_pred = TAKEN;
       if(ENABLE_CRS) {
         pred_target = CRS_REALISTIC ? bp_crs_realistic_pop(bp_data, op) :
@@ -451,21 +824,64 @@ Addr bp_predict_op(Bp_Data* bp_data, Op* op, uns br_num, Addr fetch_addr) {
           STAT_EVENT(op->proc_id, CF_ICO_USED_TARGET_CORRECT +
                                     (pred_target != op->oracle_info.npc));
       }
+
+      if (pred_target != op->oracle_info.npc) {
+        op->oracle_info.recover_at_decode = FALSE;
+        op->oracle_info.recover_at_exec = TRUE;
+        op->oracle_info.pred_npc = pred_target;
+        STAT_EVENT(op->proc_id, ICO_RECOVER + op->off_path * NUM_BR_STATS);
+      }
+      else {
+        op->oracle_info.recover_at_decode = FALSE;
+        op->oracle_info.recover_at_exec = FALSE;
+        op->oracle_info.pred = NOT_TAKEN;
+        op->oracle_info.pred_npc = pc_plus_offset;
+        STAT_EVENT(op->proc_id, ICO_CORRECT + op->off_path * NUM_BR_STATS);
+      }
+
       break;
 
     case CF_RET:
-      op->oracle_info.pred      = TAKEN;
-      op->oracle_info.late_pred = TAKEN;
+      if(PERFECT_BP) {
+        op->oracle_info.pred      = op->oracle_info.dir;
+        op->oracle_info.pred_orig = op->oracle_info.dir;
+        op->oracle_info.late_pred = op->oracle_info.dir;
+      } else {
+        op->oracle_info.pred      = TAKEN;
+        op->oracle_info.pred_orig = TAKEN;
+        op->oracle_info.late_pred = TAKEN;
+      }
       if(ENABLE_CRS)
         pred_target = CRS_REALISTIC ? bp_crs_realistic_pop(bp_data, op) :
                                       bp_crs_pop(bp_data, op);
       if(!op->off_path)
         STAT_EVENT(op->proc_id, CF_RET_USED_TARGET_CORRECT +
                                   (pred_target != op->oracle_info.npc));
+      if (pred_target == 0) { //RAS Underflow
+        op->oracle_info.recover_at_decode = FALSE;
+        op->oracle_info.recover_at_exec = TRUE;
+        op->oracle_info.pred_npc = pc_plus_offset;
+        op->oracle_info.pred = NOT_TAKEN;
+        STAT_EVENT(op->proc_id, RET_RECOVER_UFLOW + op->off_path * NUM_BR_STATS);
+      }
+      else if (pred_target != op->oracle_info.npc) {
+        op->oracle_info.recover_at_decode = FALSE;
+        op->oracle_info.recover_at_exec = TRUE;
+        op->oracle_info.pred_npc = pred_target;
+        STAT_EVENT(op->proc_id, RET_RECOVER + op->off_path * NUM_BR_STATS);
+      }
+      else {
+        op->oracle_info.recover_at_decode = FALSE;
+        op->oracle_info.recover_at_exec = FALSE;
+        op->oracle_info.pred_npc = pred_target;
+        STAT_EVENT(op->proc_id, RET_CORRECT + op->off_path * NUM_BR_STATS);
+      }
       break;
 
     default:
+      ASSERT(op->proc_id, 0); //should not happen
       op->oracle_info.pred      = TAKEN;
+      op->oracle_info.pred_orig = TAKEN;
       op->oracle_info.late_pred = TAKEN;
       if(!op->off_path)
         STAT_EVENT(op->proc_id, CF_DEFAULT_USED_TARGET_CORRECT +
@@ -474,19 +890,55 @@ Addr bp_predict_op(Bp_Data* bp_data, Op* op, uns br_num, Addr fetch_addr) {
   }
   // }}}
 
-  // pred_target = convert_to_cmp_addr(op->proc_id, pred_target);
+  pred_target = convert_to_cmp_addr(op->proc_id, pred_target);
+  if(op->oracle_info.btb_miss && op->oracle_info.pred == NOT_TAKEN)
+    btb_miss_nt = TRUE;
 
   bp_data->bp->spec_update_func(op);
   if(USE_LATE_BP) {
     bp_data->late_bp->spec_update_func(op);
   }
 
-  const Addr pc_plus_offset = ADDR_PLUS_OFFSET(
-    op->inst_info->addr, op->inst_info->trace_info.inst_size);
+  DEBUG(bp_data->proc_id,
+        "BP:  op_num:%s  off_path:%d  cf_type:%s  addr:%s  p_npc:%s  "
+        "t_npc:0x%s  btb_miss:%d  mispred:%d  misfetch:%d  no_tar:%d dir%d pred%d offset %llx target %llx\n",
+        unsstr64(op->op_num), op->off_path,
+        cf_type_names[op->table_info->cf_type], hexstr64s(op->inst_info->addr),
+        hexstr64s(op->oracle_info.pred_npc), hexstr64s(op->oracle_info.npc),
+        op->oracle_info.btb_miss, op->oracle_info.mispred,
+        op->oracle_info.recover_at_exec,op->oracle_info.recover_at_decode,
+        op->oracle_info.dir , op->oracle_info.pred,
+        pc_plus_offset, op->oracle_info.target);
 
-  const Addr prediction = op->oracle_info.pred ? pred_target : pc_plus_offset;
-  op->oracle_info.pred_npc = prediction;
+  ASSERT(op->proc_id, op->oracle_info.pred_npc);
+  if (op->oracle_info.dir != op->oracle_info.pred && pc_plus_offset != op->oracle_info.target) {
+    if (!(op->oracle_info.recover_at_exec || op->oracle_info.recover_at_decode))
+      ASSERT(op->proc_id, op->oracle_info.recover_at_exec || op->oracle_info.recover_at_decode);
+  }
+
   ASSERT_PROC_ID_IN_ADDR(op->proc_id, op->oracle_info.pred_npc);
+  bp_predict_op_evaluate(bp_data, op, op->oracle_info.pred_npc);
+
+  // The case where BTB-miss not-taken branch pollute global hist
+  // mispred || misfetch will trigger a re-steer but no chance to fix the global hist
+  if(btb_miss_nt &&
+      (((op->oracle_info.pred != op->oracle_info.dir) && (op->oracle_info.pred_npc != op->oracle_info.npc)) ||
+      (!op->oracle_info.mispred && op->oracle_info.pred_npc != op->oracle_info.npc)))
+    STAT_EVENT(op->proc_id, FDIP_BTB_MISS_NT_RESTEER_ONPATH + op->off_path);
+
+  if (!op->off_path) {
+    if (op->oracle_info.recover_at_exec)
+      STAT_EVENT(0, BP_EXEC_RECOVERIES);
+    else if (op->oracle_info.recover_at_decode)
+      STAT_EVENT(0, BP_DECODE_RECOVERIES);
+  }
+  return op->oracle_info.pred_npc;
+}
+
+/* Separate performing branch prediction from evaluating the prediction into
+ * two functions, enabling FDIP.
+ */
+Addr bp_predict_op_evaluate(Bp_Data* bp_data, Op *op, Addr prediction) {
   // If the direction prediction is wrong, but next address happens to be right
   // anyway, do not treat this as a misprediction.
   op->oracle_info.mispred = (op->oracle_info.pred != op->oracle_info.dir) &&
@@ -495,9 +947,7 @@ Addr bp_predict_op(Bp_Data* bp_data, Op* op, uns br_num, Addr fetch_addr) {
                              prediction != op->oracle_info.npc;
 
   if(USE_LATE_BP) {
-    const Addr late_prediction = op->oracle_info.late_pred ? pred_target :
-                                                             pc_plus_offset;
-    op->oracle_info.late_pred_npc = late_prediction;
+    const Addr late_prediction = op->oracle_info.late_pred_npc;
     op->oracle_info.late_mispred  = (op->oracle_info.late_pred !=
                                     op->oracle_info.dir) &&
                                    (late_prediction != op->oracle_info.npc);
@@ -555,7 +1005,7 @@ Addr bp_predict_op(Bp_Data* bp_data, Op* op, uns br_num, Addr fetch_addr) {
     bp_data->proc_id,
     "BTB:  op_num:%s  off_path:%d  cf_type:%s  addr:0x%s  btb_miss:%d\n",
     unsstr64(op->op_num), op->off_path, cf_type_names[op->table_info->cf_type],
-    hexstr64s(addr), op->oracle_info.btb_miss);
+    hexstr64s(op->inst_info->addr), op->oracle_info.btb_miss);
 
   DEBUG(bp_data->proc_id,
         "BP:  op_num:%s  off_path:%d  cf_type:%s  addr:%s  p_npc:%s  "
@@ -606,8 +1056,22 @@ void bp_target_known_op(Bp_Data* bp_data, Op* op) {
   ASSERT(bp_data->proc_id, op->table_info->cf_type);
 
   // if it was a btb miss, it is time to write it into the btb
-  if(op->oracle_info.btb_miss)
+  if(op->oracle_info.btb_miss && op->oracle_info.dir == TAKEN) {
     bp_data->bp_btb->update_func(bp_data, op);
+    STAT_EVENT(bp_data->proc_id, BTB_UPDATE_BTB_MISS);
+  } else if (op->oracle_info.btb_miss == FALSE && op->oracle_info.dir == TAKEN) {
+    // For jitted CF we want to update the BTB if the target changes, even on btb hit
+    // or For indirects we want to update the BTB if the target changes, even on btb hit
+    // The detection relies on the target stored in the btb
+    Addr line_addr;
+    Addr * btb_entry = (Addr*)cache_access(&bp_data->btb, op->oracle_info.pred_addr, &line_addr, FALSE);
+    // The following assertion can fail (due to eviction?)
+    // ASSERT(bp_data->proc_id, btb_entry);
+    if (btb_entry && *btb_entry != op->oracle_info.target) {
+      bp_data->bp_btb->update_func(bp_data, op);
+      STAT_EVENT(bp_data->proc_id, BTB_UPDATE_BTB_HIT_JITTED_NOT_CF + op->table_info->cf_type);
+    }
+  }
 
   // special case updates
   switch(op->table_info->cf_type) {
@@ -632,7 +1096,6 @@ void bp_resolve_op(Bp_Data* bp_data, Op* op) {
   if(!UPDATE_BP_OFF_PATH && op->off_path) {
     return;
   }
-
   bp_data->bp->update_func(op);
   if(USE_LATE_BP) {
     bp_data->late_bp->update_func(op);
@@ -658,6 +1121,10 @@ void bp_retire_op(Bp_Data* bp_data, Op* op) {
   if(USE_LATE_BP) {
     bp_data->late_bp->retire_func(op);
   }
+
+  // TODO : verify this
+  /*if(FDIP_ENABLE)*/
+    /*update_useful_lines(bp_data->proc_id, op);*/
 }
 
 
@@ -666,6 +1133,8 @@ void bp_retire_op(Bp_Data* bp_data, Op* op) {
  */
 
 void bp_recover_op(Bp_Data* bp_data, Cf_Type cf_type, Recovery_Info* info) {
+  STAT_EVENT(0, PERFORMED_EXEC_RECOVERIES);
+  INC_STAT_EVENT(0, PERFORMED_RECOVERY_LAT, cycle_count - info->predict_cycle);
   /* always recover the global history */
   if(cf_type == CF_CBR) {
     bp_data->global_hist = (info->pred_global_hist >> 1) |
@@ -694,4 +1163,7 @@ void bp_recover_op(Bp_Data* bp_data, Cf_Type cf_type, Recovery_Info* info) {
 
   if(ENABLE_BP_CONF && bp_data->br_conf->recover_func)
     bp_data->br_conf->recover_func();
+
+  if (FDIP_DUAL_PATH_PREF_UOC_ONLINE_ENABLE)
+    increment_branch_mispredictions(info->PC);
 }

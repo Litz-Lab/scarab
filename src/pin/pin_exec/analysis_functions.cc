@@ -188,7 +188,7 @@ void finish_before_ins_all(CONTEXT* ctxt, bool from_syscall) {
       save_context(ctxt);
       PIN_SetContextRegval(&(checkpoints.get_tail().ctxt), REG_INST_PTR,
                            (const UINT8*)(&next_eip));
-      next_eip = ADDR_MASK(next_eip + 1);
+      next_eip = ADDR_MASK(next_eip + DUMMY_NOP_SIZE);
     }
     wpnm_skip_ckp = false;
   }

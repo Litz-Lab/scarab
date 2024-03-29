@@ -39,6 +39,8 @@ typedef inst_info_map::iterator                      inst_info_map_p;
 
 /**************************** Public Functions ********************************/
 
+void init_reg_compress_map();
+void init_pin_opcode_convert();
 void init_x86_decoder(std::ostream* err_ostream);
 void fill_in_basic_info(ctype_pin_inst* info, const xed_decoded_inst_t* ins);
 uint32_t add_dependency_info(ctype_pin_inst*           info,

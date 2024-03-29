@@ -142,45 +142,6 @@ void pin_decoder_print_unknown_opcodes() {
   }
 }
 
-ctype_pin_inst create_sentinel() {
-  ctype_pin_inst inst;
-  memset(&inst, 0, sizeof(inst));
-  inst.op_type     = OP_INV;
-  inst.is_sentinel = 1;
-  strcpy(inst.pin_iclass, "SENTINEL");
-  return inst;
-}
-
-ctype_pin_inst create_dummy_jump(uint64_t eip, uint64_t tgt) {
-  ctype_pin_inst inst;
-  memset(&inst, 0, sizeof(inst));
-  inst.instruction_addr = eip;
-  inst.size             = 1;
-  inst.op_type          = OP_IADD;
-  inst.cf_type          = CF_BR;
-  inst.num_simd_lanes   = 1;
-  inst.lane_width_bytes = 1;
-  inst.branch_target    = tgt;
-  inst.actually_taken   = 1;
-  inst.fake_inst        = 1;
-  strcpy(inst.pin_iclass, "DUMMY_JMP");
-  return inst;
-}
-
-ctype_pin_inst create_dummy_nop(uint64_t                  eip,
-                                Wrongpath_Nop_Mode_Reason reason) {
-  ctype_pin_inst inst;
-  memset(&inst, 0, sizeof(inst));
-  inst.instruction_addr      = eip;
-  inst.instruction_next_addr = eip + 1;
-  inst.size                  = 1;
-  inst.op_type               = OP_NOP;
-  strcpy(inst.pin_iclass, "DUMMY_NOP");
-  inst.fake_inst        = 1;
-  inst.fake_inst_reason = reason;
-  return inst;
-}
-
 /*************************** Private Functions  *******************************/
 ctype_pin_inst* get_inst_info_obj(const INS& ins) {
   ctype_pin_inst* info = (ctype_pin_inst*)calloc(1, sizeof(ctype_pin_inst));

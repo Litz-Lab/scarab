@@ -98,7 +98,6 @@ void set_gather_scatter_reg_operand_info(const ADDRINT        iaddr,
     scatter_info_storage[iaddr].get_type();
   const gather_scatter_info::mask_reg_type mask_reg_type =
     scatter_info_storage[iaddr].get_mask_reg_type();
-
   assert(gather_scatter_info::INVALID_TYPE != info_type);
   assert(gather_scatter_info::INVALID_MASK_REG_TYPE != mask_reg_type);
 
@@ -409,7 +408,7 @@ void gather_scatter_info::set_base_reg(const xed_reg_enum_t pin_reg) {
   assert(!XED_REG_valid(_base_reg));
   if(XED_REG_valid(pin_reg)) {
     _base_reg = pin_reg;
-    assert(XED_REG_is_gr64(pin_reg) || XED_REG_is_gr32(pin_reg));
+    assert(XED_REG_is_gr64(pin_reg) || XED_REG_is_gr32(pin_reg) || XED_REG_is_gr(pin_reg));
   }
 }
 

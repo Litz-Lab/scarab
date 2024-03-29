@@ -28,17 +28,17 @@
 
 
 Bp bp_table [] = {
-    /* Enum         Name        init                timestamp               pred              spec_update               update               retire               recover            */
-    /* ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- */
-    { GSHARE_BP,    "gshare",   bp_gshare_init,     bp_gshare_timestamp,    bp_gshare_pred,   bp_gshare_spec_update,    bp_gshare_update,    bp_gshare_retire,    bp_gshare_recover   },
-    { HYBRIDGP_BP,  "hybridgp", bp_hybridgp_init,   bp_hybridgp_timestamp,  bp_hybridgp_pred, bp_hybridgp_spec_update,  bp_hybridgp_update,  bp_hybridgp_retire,  bp_hybridgp_recover },
-    { TAGESCL_BP,   "tagescl",  bp_tagescl_init,    bp_tagescl_timestamp,   bp_tagescl_pred,  bp_tagescl_spec_update,   bp_tagescl_update,   bp_tagescl_retire,   bp_tagescl_recover  },    
-    { TAGESCL80_BP, "tagescl80",  bp_tagescl_init,    bp_tagescl_timestamp,   bp_tagescl_pred,  bp_tagescl_spec_update,   bp_tagescl_update,   bp_tagescl_retire,   bp_tagescl_recover  },    
+    /* Enum         Name        init                timestamp               pred              spec_update               update               retire               recover               full             */
+    /* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- */
+    { GSHARE_BP,    "gshare",   bp_gshare_init,     bp_gshare_timestamp,    bp_gshare_pred,   bp_gshare_spec_update,    bp_gshare_update,    bp_gshare_retire,    bp_gshare_recover,    bp_gshare_full},
+    { HYBRIDGP_BP,  "hybridgp", bp_hybridgp_init,   bp_hybridgp_timestamp,  bp_hybridgp_pred, bp_hybridgp_spec_update,  bp_hybridgp_update,  bp_hybridgp_retire,  bp_hybridgp_recover,  bp_hybridgp_full},
+    { TAGESCL_BP,   "tagescl",  bp_tagescl_init,    bp_tagescl_timestamp,   bp_tagescl_pred,  bp_tagescl_spec_update,   bp_tagescl_update,   bp_tagescl_retire,   bp_tagescl_recover,   bp_tagescl_full},    
+    { TAGESCL80_BP, "tagescl80",  bp_tagescl_init,    bp_tagescl_timestamp,   bp_tagescl_pred,  bp_tagescl_spec_update,   bp_tagescl_update,   bp_tagescl_retire,   bp_tagescl_recover, bp_tagescl_full},    
 #define DEF_CBP(CBP_NAME, CBP_CLASS) \
-    { CBP_CLASS ## _BP,    CBP_NAME,   SCARAB_BP_INTF_FUNC(CBP_CLASS, init), SCARAB_BP_INTF_FUNC(CBP_CLASS, timestamp), SCARAB_BP_INTF_FUNC(CBP_CLASS, pred), SCARAB_BP_INTF_FUNC(CBP_CLASS, spec_update), SCARAB_BP_INTF_FUNC(CBP_CLASS, update), SCARAB_BP_INTF_FUNC(CBP_CLASS, retire), SCARAB_BP_INTF_FUNC(CBP_CLASS, recover)}, 
+    { CBP_CLASS ## _BP,    CBP_NAME,   SCARAB_BP_INTF_FUNC(CBP_CLASS, init), SCARAB_BP_INTF_FUNC(CBP_CLASS, timestamp), SCARAB_BP_INTF_FUNC(CBP_CLASS, pred), SCARAB_BP_INTF_FUNC(CBP_CLASS, spec_update), SCARAB_BP_INTF_FUNC(CBP_CLASS, update), SCARAB_BP_INTF_FUNC(CBP_CLASS, retire), SCARAB_BP_INTF_FUNC(CBP_CLASS, recover), SCARAB_BP_INTF_FUNC(CBP_CLASS, full)}, 
 #include "cbp_table.def"
 #undef DEF_CBP
-    { NUM_BP,       0,          NULL,               NULL,                   NULL,             NULL,                     NULL,                NULL,                NULL }
+    { NUM_BP,       0,          NULL,               NULL,                   NULL,             NULL,                     NULL,                NULL,                NULL,                 NULL }
     
 };
 

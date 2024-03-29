@@ -151,3 +151,6 @@ DEF_PARAM(  perceptron_train_misp_factor  , PERCEPTRON_TRAIN_MISP_FACTOR        
 DEF_PARAM(  perceptron_train_corr_factor  , PERCEPTRON_TRAIN_CORR_FACTOR          , uns     , uns        , 1          ,        )
 DEF_PARAM(  perceptron_conf_his_both     , PERCEPTRON_CONF_HIS_BOTH   , Flag    , Flag        , FALSE     ,           )
 DEF_PARAM(  perceptron_conf_his_both_length  , PERCEPTRON_CONF_HIS_BOTH_LENGTH   , uns    , uns        , 4     ,           )
+
+DEF_PARAM(  mtage_realistic_sc_40k  , MTAGE_REALISTIC_SC_40K   , Flag    , Flag        , FALSE     ,           )
+DEF_PARAM(  mtage_realistic_sc_100k  , MTAGE_REALISTIC_SC_100K   , Flag    , Flag        , FALSE     ,           )

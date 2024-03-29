@@ -42,8 +42,8 @@
 #include "statistics.h"
 #include "thread.h"
 
-#ifdef ENABLE_MEMTRACE
-#include "frontend/memtrace/memtrace_fe.h"
+#ifdef ENABLE_PT_MEMTRACE
+#include "frontend/pt_memtrace/trace_fe.h"
 #endif
 
 /**************************************************************************************/
@@ -69,9 +69,10 @@ void frontend_init() {
       trace_init();
       break;
     }
-#ifdef ENABLE_MEMTRACE
+#ifdef ENABLE_PT_MEMTRACE
+    case FE_PT:
     case FE_MEMTRACE: {
-      memtrace_init();
+      ext_trace_init();
       break;
     }
 #endif
@@ -91,9 +92,10 @@ void frontend_done(Flag* retired_exit) {
       trace_done();
       break;
     }
-#ifdef ENABLE_MEMTRACE
+#ifdef ENABLE_PT_MEMTRACE
+    case FE_PT:
     case FE_MEMTRACE: {
-      memtrace_done();
+      ext_trace_done();
       break;
     }
 #endif
@@ -104,7 +106,7 @@ void frontend_done(Flag* retired_exit) {
 }
 
 Addr frontend_next_fetch_addr(uns proc_id) {
-  return frontend->next_fetch_addr(proc_id);
+  return convert_to_cmp_addr(proc_id, frontend->next_fetch_addr(proc_id));
 }
 
 Flag frontend_can_fetch_op(uns proc_id) {
@@ -160,4 +162,19 @@ static void collect_op_stats(Op* op) {
     STAT_EVENT(op->proc_id, ST_NOT_MEM_OFFPATH + op->table_info->mem_type);
   }
 }
+
+#ifdef ENABLE_PT_MEMTRACE
+void frontend_extract_basic_block_vectors() {
+  switch(FRONTEND) {
+    case FE_PT:
+    case FE_MEMTRACE: {
+      ext_trace_extract_basic_block_vectors();
+      break;
+    }
+    default:
+      ASSERT(0, 0);
+      break;
+  }
+}
+#endif
 /*************************************************************/

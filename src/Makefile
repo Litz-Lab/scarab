@@ -89,4 +89,5 @@ $(BUILD_DIR_PREFIX)/%/Makefile:
 	cd $(dir $@); \
 	  CC=$(CC)      \
 	  CXX=$(CXX)     \
+	  ASM=$(AS)   \
 	  $(CMAKE) ../.. -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)

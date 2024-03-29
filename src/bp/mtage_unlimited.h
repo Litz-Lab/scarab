@@ -68,13 +68,15 @@
 // update (ramp-up) is made sligtly less aggressive
 
 // parameters specific to the global tage
+/*
+Moved to mtage_unlimited.cc
 #define P0_NUMG 25
 #define P0_LOGB 21
 #define P0_LOGG 21
 #define P0_MAXHIST 5000
 #define P0_MINHIST 7
 #define P0_HASHPARAM 3
-#define P0_RAMPUP 100000
+#define P0_RAMPUP 100000 */
 
 // parameters specific to the per-address tage
 #define P1_NUMG 22
@@ -122,7 +124,7 @@
 #define P5_RAMPUP 100000
 
 // parameters common to all tages
-#define TAGBITS 15
+//#define TAGBITS 15
 #define CTRBITS 3
 #define PATHBITS 6
 #define POSTPBITS 5
@@ -341,10 +343,12 @@ class MTAGE {
  public:
   MTAGE(void);
   bool GetPrediction(uint64_t PC);
+  bool GetPrediction (UINT64 PC, int* bp_confidence);
   void UpdatePredictor(uint64_t PC, OpType OPTYPE, bool resolveDir,
                        bool predDir, uint64_t branchTarget);
   void TrackOtherInst(uint64_t PC, OpType opType, bool taken,
                       uint64_t branchTarget);
+  uns8 IsFull(void);
 
   void initSC();
   void HistoryUpdate(uint64_t PC, uint8_t brtype, bool taken, uint64_t target,

@@ -54,6 +54,7 @@ void bp_gshare_timestamp(Op* op) {}
 void bp_gshare_recover(Recovery_Info* info) {}
 void bp_gshare_spec_update(Op* op) {}
 void bp_gshare_retire(Op* op) {}
+uns8 bp_gshare_full(uns proc_id) { return 0; }
 
 
 void bp_gshare_init() {

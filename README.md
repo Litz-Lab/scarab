@@ -1,3 +1,17 @@
+# Scarab Memtrace
+Install:
+1. Install exact PIN version ([PIN 3.15](https://www.intel.com/content/www/us/en/developer/articles/tool/pin-a-binary-instrumentation-tool-downloads.html))
+2. Export the following paths
+  - `export PIN_ROOT=/path/to/pin-3.15`
+  - `export SCARAB_ENABLE_PT_MEMTRACE=1`
+3. `cd src && make`
+
+Run:
+
+Use `src/PARAMS.sunny_cove` as the `PARAMS.in` file template, and run:
+
+`src/scarab --frontend memtrace --cbp_trace_r0=<MEMTRACE_FILE> --memtrace_modules_log=<MODULES_LOG_AND_BINARIES_DIR>`
+
 # Scarab
 
 Scarab is a cycle accurate simulator for state-of-the-art, high performance,

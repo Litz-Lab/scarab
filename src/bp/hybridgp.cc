@@ -454,3 +454,9 @@ void bp_hybridgp_retire(Op* op) {
 
   hybridgp_state.in_flight.deallocate_front(op->recovery_info.branch_id);
 }
+
+uns8 bp_hybridgp_full(uns proc_id) {
+  auto&     hybridgp_state = hybridgp_state_all_cores.at(proc_id);
+
+  return hybridgp_state.in_flight.is_full();
+}

@@ -20,13 +20,13 @@
  */
 
 /***************************************************************************************
- * File         : frontend/memtrace_trace_reader.cc
+ * File         : frontend/pt_memtrace/memtrace_trace_reader.cc
  * Author       : Heiner Litz
  * Date         : 05/15/2020
  * Description  :
  ***************************************************************************************/
 
-#include "frontend/memtrace/memtrace_trace_reader.h"
+#include "frontend/pt_memtrace/memtrace_trace_reader.h"
 #include <algorithm>
 #include <cstring>
 #include <fcntl.h>
@@ -59,8 +59,7 @@ static std::mutex initMutex;
 
 // A non-reader
 TraceReader::TraceReader() :
-    trace_ready_(false), binary_ready_(false), skipped_(0) {
-  init("");
+  trace_ready_(false), binary_ready_(false), skipped_(0), buf_size_(0) {
 }
 
 // Trace + single binary
@@ -228,17 +227,12 @@ void TraceReader::fillCache(uint64_t _vAddr, uint8_t _reported_size,
     xed_decoded_inst_zero_set_mode(ins, &xed_state_);
     if(inst_bytes != NULL) {
       loc  = inst_bytes;
-      size = _reported_size;
     }
     xed_error_enum_t res;
-    if(inst_bytes != NULL)
-      res = xed_decode(ins, inst_bytes, _reported_size);
-    else
-      res = xed_decode(ins, loc, size);
-
-    if(res != XED_ERROR_NONE) {
-      warn("XED decode error for 0x%lx: %s %u", _vAddr,
-           xed_error_enum_t2str(res), _reported_size);
+    res = xed_decode(ins, loc, _reported_size);
+    if (res != XED_ERROR_NONE) {
+       warn("XED decode error for 0x%lx: %s %u, replacing with nop\n", _vAddr, xed_error_enum_t2str(res), _reported_size);
+      *ins = *makeNop(_reported_size);
     }
     // Record if this instruction requires memory operands, since the trace
     // will deliver it in additional pieces
@@ -325,12 +319,47 @@ unique_ptr<xed_decoded_inst_t> TraceReader::makeNop(uint8_t _length) {
   return ptr;
 }
 
+// WARNING: This function generates a memory leak!
+xed_decoded_inst_t* TraceReader::createJmp(uint64_t displacement) {
+  static int createdJmps = 0;
+  xed_encoder_instruction_t inst;
+  xed_state_t state;
+  state.mmode = XED_MACHINE_MODE_LONG_64;
+  xed_encoder_request_t req;
+  xed_inst1(&inst, state, XED_ICLASS_JMP, 64,  xed_relbr(displacement - 5, 32)); // -5 is due to this jump insn being 5 bytes large (1 op, 4 32 bit disp)
+  xed_encoder_request_zero_set_mode(&req, &state);
+  if(!xed_convert_to_encoder_request(&req, &inst)) {
+    panic("Encoder conversion failed! Is the displacement too large?");
+    return nullptr;
+  }
+  xed_uint8_t encodedBytes[15];
+  unsigned int numBytesUsed = 0;
+  xed_error_enum_t error = xed_encode(&req, encodedBytes, sizeof(encodedBytes), &numBytesUsed);
+  if(error != XED_ERROR_NONE) {
+    panic("Failed to encode due to: %s\n", xed_error_enum_t2str(error));
+    return nullptr;
+  }
+  xed_decoded_inst_t* decoded_inst = new xed_decoded_inst_t;
+  createdJmps++;
+  if ((createdJmps % 1000) == 0)
+    warn("generated %i Jmp instructions, possible memory leak", createdJmps);
+  xed_decoded_inst_zero(decoded_inst);
+  xed_decoded_inst_set_mode(decoded_inst, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
+  error = xed_decode(decoded_inst, encodedBytes, numBytesUsed);
+  if(error == XED_ERROR_NONE) {
+    return decoded_inst;
+  }
+  delete decoded_inst;
+  panic("Could not decode due to %s\n", xed_error_enum_t2str(error));
+  return nullptr;
+}
+
+
 void TraceReader::init_buffer() {
   // Push one dummy entry so we can pop in nextInstruction()
   ins_buffer.emplace_back(InstInfo());
-
   for(uint32_t i = 0; i < buf_size_; i++) {
-    ins_buffer.emplace_back(*getNextInstruction());
+      ins_buffer.emplace_back(*getNextInstruction());
   }
 }
 

@@ -68,6 +68,9 @@ typedef enum Mem_Req_State_enum {
     elem(DFETCH)       /* data fetch */              \
     elem(DSTORE)       /* data store */              \
     elem(IPRF)         /* instruction prefetch */    \
+    elem(UOCPRF)       /* only uop cache prefetch */ \
+    elem(FDIPPRFON)    /* FDIP on-path instruction prefetch */ \
+    elem(FDIPPRFOFF)   /* FDIP off-path instruction prefetch */ \
     elem(DPRF)         /* data prefetch */           \
     elem(WB)           /* writeback of dirty data */ \
     elem(WB_NODIRTY)   /* writeback of clean data */ \
@@ -102,6 +105,11 @@ struct Mem_Req_struct {
                               set after the branch resolves */
   Mem_Req_State            state;    /* what state is the miss in? */
   Mem_Req_Type             type;     /* what kind of miss is it? */
+  /* Bit string recording all Mem_Req_Type(s) that were coalesced into this request. */
+  uns                      types;
+  Counter                  fdip_emitted_cycle; /* cycle when the request is emitted. */
+  uns64                    ghist;
+  Counter                  demand_icache_emitted_cycle; /* cycle when the request is emitted. */
   struct Mem_Queue_struct* queue;    /* Pointer to the queue this entry is in */
   Counter                  priority; /* priority of the miss */
   Addr                     addr;     /* address to fetch */
@@ -185,6 +193,8 @@ struct Mem_Req_struct {
   Counter dram_access_cycle; /* cycle of DRAM access (in L1 cycles) */
   Counter dram_latency;      /* DRAM latency (in L1 cycles) */
   Counter dram_core_service_cycles_at_start; /* "Virtual clock" timestamp */
+  uns fdip_pref_off_path; /*set if the mem_req is requested by FDIP on the actual wrong path prediction*/
+  Counter cyc_hit_by_demand_load; /*set if the mem_req (requested by FDIP) is hit by a demand load*/
 };
 
 /**************************************************************************************/
@@ -193,6 +203,11 @@ struct Mem_Req_struct {
 Flag mem_req_type_is_demand(Mem_Req_Type type);
 Flag mem_req_type_is_prefetch(Mem_Req_Type type);
 Flag mem_req_type_is_stalling(Mem_Req_Type type);
+
+/* Returns whether this type either started or was ever coalesced into this mem_req. */
+Flag mem_req_is_type(Mem_Req* req, Mem_Req_Type type);
+void mem_req_set_types(Mem_Req* req, Mem_Req_Type type);
+void mem_req_clr_types(Mem_Req* req, Mem_Req_Type type);
 
 /**************************************************************************************/
 /* Externs */

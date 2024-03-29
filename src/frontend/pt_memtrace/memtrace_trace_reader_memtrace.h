@@ -20,7 +20,7 @@
  */
 
 /***************************************************************************************
- * File         : frontend/memtrace_trace_reader_memtrace.h
+ * File         : frontend/pt_memtrace/memtrace_trace_reader_memtrace.h
  * Author       : Heiner Litz
  * Date         : 05/15/2020
  * Description  :
@@ -28,7 +28,7 @@
 #ifndef MEMTRACE_READER_MEMTRACE_H
 #define MEMTRACE_READER_MEMTRACE_H
 
-#include "frontend/memtrace/memtrace_trace_reader.h"
+#include "frontend/pt_memtrace/memtrace_trace_reader.h"
 
 //#include "instrument.h"
 #include "analyzer.h"
@@ -53,12 +53,13 @@ class TraceReaderMemtrace : public TraceReader {
   static const char* parse_buildid_string(const char* src, OUT void** data);
   bool               getNextInstruction__(InstInfo* _info, InstInfo* _prior);
   void               processInst(InstInfo* _info);
-  bool               typeIsMem(trace_type_t _type);
+  bool               typeIsMem(dynamorio::drmemtrace::trace_type_t _type);
 
-  std::unique_ptr<module_mapper_t> module_mapper_;
-  raw2trace_directory_t            directory_;
+  std::unique_ptr<dynamorio::drmemtrace::module_mapper_t> module_mapper_;
+  dynamorio::drmemtrace::raw2trace_directory_t            directory_;
   void*                            dcontext_;
   unsigned int                     knob_verbose_;
+  bool                             trace_has_encodings_;
 
   enum class MTState {
     INST,
@@ -66,11 +67,14 @@ class TraceReaderMemtrace : public TraceReader {
     MEM2,
   };
 
-  std::unique_ptr<analyzer_t> mt_reader_;
-  reader_t*                   mt_iter_;
-  reader_t*                   mt_end_;
+  // std::unique_ptr<dynamorio::drmemtrace::analyzer_t> mt_reader_;
+
+  dynamorio::drmemtrace::scheduler_t scheduler;
+
   MTState                     mt_state_;
-  memref_t                    mt_ref_;
+  dynamorio::drmemtrace::memref_t                    mt_ref_;
+  dynamorio::drmemtrace::scheduler_t::stream_status_t mt_status_;
+  bool                        mt_use_next_ref_;
   int                         mt_mem_ops_;
   uint64_t                    mt_seq_;
   uint32_t                    mt_prior_isize_;

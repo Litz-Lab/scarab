@@ -34,8 +34,8 @@
 #include "frontend/pin_exec_driven_fe.h"
 #include "frontend/pin_trace_fe.h"
 
-#ifdef ENABLE_MEMTRACE
-#include "frontend/memtrace/memtrace_fe.h"
+#ifdef ENABLE_PT_MEMTRACE
+#include "frontend/pt_memtrace/trace_fe.h"
 #endif
 
 Frontend_Impl frontend_table[] = {

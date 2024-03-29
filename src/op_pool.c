@@ -58,6 +58,7 @@ allocates them once and then hands out pointers every time 'alloc_op' is called.
 #define DEBUG(proc_id, args...) _DEBUG(proc_id, DEBUG_OP_POOL, ##args)
 #define DEBUGU(proc_id, args...) _DEBUGU(proc_id, DEBUG_OP_POOL, ##args)
 
+// TODO: it should be increased to 512 to use more than 50,000 FDIP lookahead buffer entries
 #define OP_POOL_ENTRIES_INC 128 /* default 128 */
 
 /**************************************************************************************/
@@ -158,7 +159,8 @@ void free_op(Op* op) {
 
   if(op->inst_info && op->inst_info->fake_inst) {
     ASSERT(0, op->table_info == op->inst_info->table_info);
-    free(op->inst_info->table_info);
+    //we no longer allocate memory for fake nops
+    //free(op->inst_info->table_info);
     free(op->inst_info);
     op->inst_info = NULL;
   }
@@ -215,6 +217,7 @@ void op_pool_setup_op(uns proc_id, Op* op) {
   op->done_cycle          = MAX_CTR;
   op->retire_cycle        = MAX_CTR;
   op->replay_cycle        = MAX_CTR;
+  op->decode_cycle        = 0;
   op->replay              = FALSE;
   op->replay_count        = 0;
   op->dont_cause_replays  = FALSE;
@@ -230,12 +233,14 @@ void op_pool_setup_op(uns proc_id, Op* op) {
   op->rs_id            = MAX_CTR;
   op->same_src_last_op = 0;
 
-  op->oracle_info.num_srcs     = 0;
-  op->oracle_info.update_fpcr  = FALSE;
-  op->oracle_info.error_event  = 0;
-  op->oracle_info.mispred      = FALSE;
-  op->oracle_info.misfetch     = FALSE;
-  op->oracle_info.recovery_sch = FALSE;
+  op->oracle_info.num_srcs          = 0;
+  op->oracle_info.update_fpcr       = FALSE;
+  op->oracle_info.error_event       = 0;
+  op->oracle_info.mispred           = FALSE;
+  op->oracle_info.misfetch          = FALSE;
+  op->oracle_info.recovery_sch      = FALSE;
+  op->oracle_info.recover_at_decode = FALSE;
+  op->oracle_info.recover_at_exec   = FALSE;
 
   op->oracle_cp_num                  = -1;
   op->engine_info.dcmiss             = FALSE;
@@ -248,9 +253,13 @@ void op_pool_setup_op(uns proc_id, Op* op) {
 
   op->recovery_scheduled = FALSE;
   op->redirect_scheduled = FALSE;
+  op->fetched_from_uop_cache         = FALSE;
 
   for(ii = 0; ii < NUM_DEP_TYPES; ii++)
     op->wake_up_signaled[ii] = FALSE;
+
+  for (ii = 0; ii < MAX_DESTS; ii++)
+    op->dst_reg_file_ptag[ii] = -1;
 }
 
 

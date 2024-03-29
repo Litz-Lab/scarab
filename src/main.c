@@ -271,6 +271,12 @@ int main(int argc, char* argv[], char* envp[]) {
     case FULL_SIM_MODE:
       full_sim();
       break;
+#ifdef ENABLE_PT_MEMTRACE
+    case TRACE_BBV_MODE:
+    case TRACE_BBV_DISTRIBUTED_MODE:
+      extract_basic_block_vectors();
+      break;
+#endif
     default:
       FATAL_ERROR(0, "Unknown simulation mode.");
       break;

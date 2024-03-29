@@ -29,6 +29,9 @@
 #ifndef __OP_POOL_H__
 #define __OP_POOL_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /**************************************************************************************/
 /* Global Variables */
@@ -49,5 +52,9 @@ void op_pool_init_op(Op*);
 void op_pool_setup_op(uns proc_id, Op* op);
 
 /**************************************************************************************/
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* #ifndef __OP_POOL_H__ */

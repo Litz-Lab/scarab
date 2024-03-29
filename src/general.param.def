@@ -59,13 +59,19 @@ DEF_PARAM( forward_progress_limit       , FORWARD_PROGRESS_LIMIT    , uns    , u
 DEF_PARAM( forward_progress_interval    , FORWARD_PROGRESS_INTERVAL , uns    , uns       , 10000    ,       )
 /* Fast forward in Instructions */                                                         
 DEF_PARAM( fast_forward                 , FAST_FORWARD              , uns64    , uns64   , 0        ,       )
-DEF_PARAM( fast_forward_until_addr      , FAST_FORWARD_UNTIL_ADDR   , uns      , uns     , 0        ,       )
 DEF_PARAM( fast_forward_trace_ins       , FAST_FORWARD_TRACE_INS    , uns64    , uns64   , 0        ,       )
+DEF_PARAM( fast_forward_until_addr      , FAST_FORWARD_UNTIL_ADDR   , uns      , uns     , 0        ,       )
+DEF_PARAM( memtrace_roi_begin           , MEMTRACE_ROI_BEGIN        , uns64    , uns64   , 0        ,       )
+DEF_PARAM( memtrace_roi_end             , MEMTRACE_ROI_END          , uns64    , uns64   , 0        ,       )
+DEF_PARAM( full_warmup                  , FULL_WARMUP               , uns64    , uns64   , 0        ,       )
 DEF_PARAM( warmup                       , WARMUP                    , uns64    , uns64   , 0        ,       )
-
 DEF_PARAM( heartbeat_interval           , HEARTBEAT_INTERVAL        , uns    , uns       , 1000000  ,       ) 
 DEF_PARAM( num_heartbeats               , NUM_HEARTBEATS            , uns    , uns       , 0        ,       ) 
- 
+DEF_PARAM( use_fetched_count            , USE_FETCHED_COUNT         , Flag   , Flag      , FALSE    ,       )
+
+/* Periodic dump every heartbeat_interval instructions*/
+DEF_PARAM( periodic_dump                , PERIODIC_DUMP             , Flag   , Flag      , FALSE    ,       )
+
 DEF_PARAM( file_tag                     , FILE_TAG                  , char * , string    , ""       ,       )
 DEF_PARAM( output_dir                   , OUTPUT_DIR                , char * , string    , "."      ,       )
 DEF_PARAM( status_file                  , STATUS_FILE               , char * , string    , NULL     ,       )
@@ -84,7 +90,7 @@ DEF_PARAM( memview                      , MEMVIEW                   , Flag   , F
 DEF_PARAM( memview_file                 , MEMVIEW_FILE              , char * , string    , "memview.out",   )
 DEF_PARAM( memview_start                , MEMVIEW_START             , char*  , string    , "never",         )
  
-DEF_PARAM( inst_hash_table_size         , INST_HASH_TABLE_SIZE      , uns    , uns       , 500021   , const )
+DEF_PARAM( inst_hash_table_size         , INST_HASH_TABLE_SIZE      , uns    , uns       , 524288   , const )
 
 DEF_PARAM( stdout                       , STDOUT_FILE               , char * , string    , NULL     ,       )
 DEF_PARAM( stderr                       , STDERR_FILE               , char * , string    , NULL     ,       )
@@ -98,3 +104,11 @@ DEF_PARAM( optimizer2_max_num_slaves    , OPTIMIZER2_MAX_NUM_SLAVES , uns    , u
 DEF_PARAM( optimizer2_perfect_memoryless, OPTIMIZER2_PERFECT_MEMORYLESS, Flag, Flag      , FALSE    ,       )
 
 DEF_PARAM( exit_cond                    , EXIT_COND                 , int    , exit_cond , 0        ,       )
+DEF_PARAM( num_nops                     , NUM_NOPS                   , uns64  , uns64    , 0        ,       )
+DEF_PARAM( nops_bb_start                , NOPS_BB_START              , uns64  , uns64    , 0x5000000,       )
+
+DEF_PARAM( ignore_bar_fetch             , IGNORE_BAR_FETCH           , Flag   , Flag     , FALSE    ,       ) 
+
+DEF_PARAM( trace_bbv_output             , TRACE_BBV_OUTPUT          , char*  , string    , NULL     ,       )
+DEF_PARAM( trace_footprint_output       , TRACE_FOOTPRINT_OUTPUT    , char*  , string    , ""       ,       )
+DEF_PARAM( segment_instr_count          , SEGMENT_INSTR_COUNT       , uns64  , uns64     , 0        ,       )

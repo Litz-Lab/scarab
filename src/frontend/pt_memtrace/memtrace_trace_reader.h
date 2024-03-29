@@ -125,6 +125,7 @@ class TraceReader {
   void fillCache(uint64_t _vAddr, uint8_t _reported_size,
                  uint8_t* inst_bytes = NULL);
   void traceFileIs(const std::string& _trace);
+  xed_decoded_inst_t* createJmp(uint64_t displacement);
 };
 
 #endif

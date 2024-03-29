@@ -67,7 +67,8 @@ extern "C" {
   void SCARAB_BP_INTF_FUNC(CBP_CLASS, spec_update)(Op * op); \
   void SCARAB_BP_INTF_FUNC(CBP_CLASS, update)(Op * op);      \
   void SCARAB_BP_INTF_FUNC(CBP_CLASS, retire)(Op * op);      \
-  void SCARAB_BP_INTF_FUNC(CBP_CLASS, recover)(Recovery_Info*);
+  void SCARAB_BP_INTF_FUNC(CBP_CLASS, recover)(Recovery_Info*); \
+  Flag SCARAB_BP_INTF_FUNC(CBP_CLASS, full)(uns proc_id);
 #include "cbp_table.def"
 #undef DEF_CBP
 

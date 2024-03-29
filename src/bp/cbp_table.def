@@ -13,3 +13,4 @@
  */
 
 DEF_CBP("mtage", MTAGE)
+DEF_CBP("tage64k", TAGE64K)

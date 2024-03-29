@@ -33,6 +33,11 @@
 #include "libs/cache_lib.h"
 #include "stage_data.h"
 
+#define IC_ISSUE_WIDTH      ISSUE_WIDTH
+// TODO(peterbraun): Only works with UOP_CACHE_ADDITIONAL_ISSUE_BANDWIDTH=0
+// Add additional ISSUE WIDTH to later stages?
+#define UC_ISSUE_WIDTH      ISSUE_WIDTH + UOP_CACHE_ADDITIONAL_ISSUE_BANDWIDTH
+
 /**************************************************************************************/
 /* Forward Declarations */
 
@@ -52,6 +57,8 @@ typedef enum Icache_State_enum {
   IC_WAIT_FOR_REDIRECT,
   IC_WAIT_FOR_EMPTY_ROB,
   IC_WAIT_FOR_TIMER,
+  IC_WAIT_FOR_FDIP,
+  IC_WAIT_FOR_RENAME,
 } Icache_State;
 
 typedef struct Icache_Stage_struct {
@@ -61,9 +68,9 @@ typedef struct Icache_Stage_struct {
   Icache_State state; /* state that the ICACHE is in */
   Icache_State
     next_state; /* state that the ICACHE is going to be in next cycle */
+  uint64_t wait_for_miss_start; /* time when cache miss was observed */
+  Icache_State prev_different_state; /* last state that differed from current */
 
-  Counter inst_count; /* instruction counter used to number ops (global counter
-                         is for retired ops) */
   Inst_Info** line;   /* pointer to current line on a hit */
   Addr        line_addr;       /* address of the last cache line hit */
   Addr        fetch_addr;      /* address fetched */
@@ -92,17 +99,12 @@ typedef struct Icache_Data_struct {
        offpath_op_unique; /* unique of the off path op that fetched this line */
   uns  read_count[2];
   Flag HW_prefetch;
+  uns FDIP_prefetch;
+  uint64_t ghist;
 
   Counter fetch_cycle;
   Counter onpath_use_cycle;
 } Icache_Data;
-
-
-/**************************************************************************************/
-/* Global Variables */
-
-Pb_Data* ic_pb_data;  // cmp cne is fine for cmp now assuming homogeneous cmp
-// But decided to use array for future use
 
 
 /**************************************************************************************/
@@ -125,9 +127,16 @@ void redirect_icache_stage(void);
 void debug_icache_stage(void);
 void update_icache_stage(void);
 Flag icache_fill_line(Mem_Req*);
+void wp_process_icache_evicted(Icache_Data* line, Mem_Req* req, Addr* repl_line_addr);
 void wp_process_icache_hit(Icache_Data* line, Addr fetch_addr);
 void wp_process_icache_fill(Icache_Data* line, Mem_Req* req);
 Flag icache_off_path(void);
+void move_to_prev_op(void);
+Flag instr_fill_line(Mem_Req* req);
+Flag instr_fill_line(Mem_Req* req);
+
+// For branch stat collection
+Flag in_icache(Addr addr);
 
 /**************************************************************************************/
 

@@ -111,6 +111,42 @@ DEF_PARAM(icache_write_ports, ICACHE_WRITE_PORTS, uns, uns, 1, )
 DEF_PARAM(icache_banks, ICACHE_BANKS, uns, uns, 8, )
 DEF_PARAM(icache_repl, ICACHE_REPL, uns, uns, 0, )
 
+/* Uop Cache */
+DEF_PARAM(uop_cache_enable, UOP_CACHE_ENABLE, uns, uns, 1,)
+DEF_PARAM(  uop_cache_additional_issue_bandwidth, UOP_CACHE_ADDITIONAL_ISSUE_BANDWIDTH, uns, uns, 0                      ,       )
+DEF_PARAM(  oracle_perfect_uop_cache       , ORACLE_PERFECT_UOP_CACHE        , Flag   , Flag    , FALSE                  ,       )
+DEF_PARAM(  inf_size_uop_cache             , INF_SIZE_UOP_CACHE              , Flag   , Flag    , FALSE                  ,       )
+DEF_PARAM(  inf_size_uop_cache_pw_size_lim , INF_SIZE_UOP_CACHE_PW_SIZE_LIM  , uns    , uns     , 0                      ,       )
+DEF_PARAM(uop_cache_insert_only_onpath, UOP_CACHE_INSERT_ONLY_ONPATH, Flag, Flag, FALSE,)
+// Uop cache size is set by its uop capacity, NOT size in bytes
+DEF_PARAM(uop_cache_uop_capacity, UOP_CACHE_UOP_CAPACITY, uns, uns, 6 * 256,)  // 256 lines * 6 uops/line = 1.5K uops
+DEF_PARAM(  uop_cache_assoc                , UOP_CACHE_ASSOC                 , uns    , uns     , 8                      ,       )
+DEF_PARAM(  uop_cache_max_uops_line        , UOP_CACHE_MAX_UOPS_LINE         , uns    , uns     , 4                      ,       )
+// max uops per line should be the width of the processor
+DEF_PARAM(  uop_cache_max_imm_disp_line    , UOP_CACHE_MAX_IMM_DISP_LINE     , uns    , uns     , 4                      ,       )
+DEF_PARAM(  iprf_on_uop_cache_hit          , IPRF_ON_UOP_CACHE_HIT           , Flag   , Flag    , FALSE                  ,       )
+DEF_PARAM(  uop_cache_repl                 , UOP_CACHE_REPL                  , uns    , uns     , 0                      ,       )
+DEF_PARAM(uoc_ic_switch_frag_disable, UOC_IC_SWITCH_FRAG_DISABLE, Flag, Flag, FALSE,)
+// For REPL_STICKY_PRIORITY_LINES; Likelihood of lines to be sticky when updating repl as a percent (0-100). If not sticky, default to LRU.
+DEF_PARAM(priority_line_stickiness_percent, PRIORITY_LINE_STICKINESS_PERCENT, int, int, 50,)
+DEF_PARAM(pw_priority_list_filepath, PW_PRIORITY_LIST_FILEPATH, char*, string, "pw_priority_list.csv", )
+DEF_PARAM(num_priority_pws, NUM_PRIORITY_PWS, uns, uns, 10,)
+DEF_PARAM(prioritize_pws_after_first_sticky_until_backend_stall, PRIORITIZE_PWS_AFTER_FIRST_STICKY_UNTIL_BACKEND_STALL, Flag, Flag, FALSE,)
+// If set, PWs are only inserted after a resteer until the uop queue fills.
+// The UOC becomes a cache only for ops that follow a resteer.
+DEF_PARAM(uop_cache_insert_only_after_resteer_uop_queue_not_full, UOP_CACHE_INSERT_ONLY_AFTER_RESTEER_UOP_QUEUE_NOT_FULL, Flag, Flag, FALSE,)
+DEF_PARAM(no_repl_after_queue_size, NO_REPL_AFTER_QUEUE_SIZE, uns, uns, 0,)
+/* FDIP Confidence Cache */
+// The cache line size is fixed to ICACHE_LINE_SIZE (64 by default). The number of entries in a FDIP UC is FDIP_UC_SIZE / ICACHE_LINE_SIZE. To have 16K (16384) entries, FDIP_UC_SIZE should be 1048576.
+DEF_PARAM(  fdip_uc_size                   , FDIP_UC_SIZE                    , uns    , uns     , 0                      ,       )
+DEF_PARAM(  fdip_uc_assoc                  , FDIP_UC_ASSOC                   , uns    , uns     , 4                      ,       )
+// The insert replacement policy should be one of INSERT_REP_(DEFAULT/LRU/LOWQTR/MID/MRU)
+DEF_PARAM(  fdip_uc_insert_replpol         , FDIP_UC_INSERT_REPLPOL          , uns    , uns     , 0                      ,       )
+// Allow the map stage to consume ops originating from either the icache or uop cache path in the same cycle.
+DEF_PARAM(  map_stage_consume_from_icache_and_uoc_same_cycle, MAP_STAGE_CONSUME_FROM_ICACHE_AND_UOC_SAME_CYCLE, Flag, Flag, TRUE,)
+// max uops in queue = uop_queue_length * (ISSUE_WIDTH + UOP_CACHE_ADDITIONAL_ISSUE_BANDWIDTH)
+DEF_PARAM(  uop_queue_length               , UOP_QUEUE_LENGTH                , uns    , uns     , 7                      ,       )
+
 /* L0 data */
 DEF_PARAM(dcache_size, DCACHE_SIZE, uns, uns, (64 * 1024), )
 DEF_PARAM(dcache_assoc, DCACHE_ASSOC, uns, uns, 1, )
@@ -140,6 +176,9 @@ DEF_PARAM(mem_priority_ifetch, MEM_PRIORITY_IFETCH, uns, uns, 0, )
 DEF_PARAM(mem_priority_dfetch, MEM_PRIORITY_DFETCH, uns, uns, 0, )
 DEF_PARAM(mem_priority_dstore, MEM_PRIORITY_DSTORE, uns, uns, 0, )
 DEF_PARAM(mem_priority_iprf, MEM_PRIORITY_IPRF, uns, uns, 9, )
+DEF_PARAM(mem_priority_uocprf, MEM_PRIORITY_UOCPRF, uns, uns, 9, )
+DEF_PARAM(mem_priority_fdipprfon, MEM_PRIORITY_FDIPPRFON, uns, uns, 8, )
+DEF_PARAM(mem_priority_fdipprfoff, MEM_PRIORITY_FDIPPRFOFF, uns, uns, 9, )
 DEF_PARAM(mem_priority_dprf, MEM_PRIORITY_DPRF, uns, uns, 10, )
 DEF_PARAM(mem_priority_wb, MEM_PRIORITY_WB, uns, uns, 0, )
 DEF_PARAM(mem_priority_wb_nodirty, MEM_PRIORITY_WB_NODIRTY, uns, uns, 0, )

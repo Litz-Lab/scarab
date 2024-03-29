@@ -126,3 +126,72 @@ DEF_PARAM( pref_hfilter_use_pc             , PREF_HFILTER_USE_PC     , Flag     
 DEF_PARAM( pref_hfilter_pred_useless_thres , PREF_HFILTER_PRED_USELESS_THRES, uns8     , uns8               , 2        ,    )
 DEF_PARAM( pref_hfilter_reset_enable       , PREF_HFILTER_RESET_ENABLE, Flag           , Flag               , FALSE    ,    )
 DEF_PARAM( pref_hfilter_reset_interval     , PREF_HFILTER_RESET_INTERVAL, uns          , uns                , 100000   ,    )      
+
+/* EIP Frontend Prefetcher */
+DEF_PARAM(eip_enable, EIP_ENABLE, uns, uns, 0, )
+DEF_PARAM(l1i_entangled_table_index_bits, L1I_ENTANGLED_TABLE_INDEX_BITS, uns, uns, 9, )
+DEF_PARAM(l1i_entangled_table_ways, L1I_ENTANGLED_TABLE_WAYS, uns, uns, 16, )
+
+/* D-JOLT Frontend Prefetcher */
+DEF_PARAM(djolt_enable, DJOLT_ENABLE, uns, uns, 0, )
+
+/* FNL+MMA Frontend Prefetcher */
+DEF_PARAM(fnlmma_enable, FNLMMA_ENABLE, uns, uns, 0, )
+
+/* FDIP Frontend Prefetcher */
+
+DEF_PARAM(fdip_enable, FDIP_ENABLE, uns, uns, 1, )
+DEF_PARAM(fdip_always_prefetch, FDIP_ALWAYS_PREFETCH, Flag, Flag, FALSE, )
+DEF_PARAM(perfect_fdip, PERFECT_FDIP, Flag, Flag, FALSE, )
+DEF_PARAM(fdip_bloom_filter, FDIP_BLOOM_FILTER, Flag, Flag, FALSE, )
+DEF_PARAM(fdip_bloom_entries, FDIP_BLOOM_ENTRIES, uns, uns, 4000, )
+DEF_PARAM(fdip_bloom2_entries, FDIP_BLOOM2_ENTRIES, uns, uns, 1000, )
+DEF_PARAM(fdip_bloom4_entries, FDIP_BLOOM4_ENTRIES, uns, uns, 1000, )
+DEF_PARAM(fdip_bloom_size, FDIP_BLOOM_SIZE, uns, uns, 16384, )
+DEF_PARAM(fdip_bloom_hashes, FDIP_BLOOM_HASHES, uns, uns, 6, )
+DEF_PARAM(fdip_bloom_clear_unuseful_ratio, FDIP_BLOOM_CLEAR_UNUSEFUL_RATIO, float, float, 0.75 , )
+DEF_PARAM(fdip_bloom_clear_cyc_period, FDIP_BLOOM_CLEAR_CYC_PERIOD, uns, uns, 10000, )
+DEF_PARAM(fdip_utility_hash_enable, FDIP_UTILITY_HASH_ENABLE, uns, uns, 0, )
+DEF_PARAM(fdip_utility_learn_policy, FDIP_UTILITY_PREF_POLICY, uns, uns, 0, )
+DEF_PARAM(fdip_adjustable_ftq, FDIP_ADJUSTABLE_FTQ, uns, uns, 0, )
+DEF_PARAM(fdip_adjustable_ftq_cyc, FDIP_ADJUSTABLE_FTQ_CYC, uns, uns, 100000, )
+DEF_PARAM(fdip_pref_no_latency, FDIP_PREF_NO_LATENCY, Flag, Flag, FALSE, )
+DEF_PARAM(udp_useful_threshold, UDP_USEFUL_THRESHOLD, int, int, 0, )
+DEF_PARAM(udp_weight_useful, UDP_WEIGHT_USEFUL, uns, uns, 4, )
+DEF_PARAM(udp_weight_unuseful, UDP_WEIGHT_UNUSEFUL, uns, uns, 1, )
+DEF_PARAM(udp_weight_positive_saturation, UDP_WEIGHT_POSITIVE_SATURATION, uns, uns, 2147483647, )
+DEF_PARAM(fdip_bp_perfect_confidence, FDIP_BP_PERFECT_CONFIDENCE, Flag, Flag, FALSE, )
+DEF_PARAM(fdip_ghist_hashing, FDIP_GHIST_HASHING, Flag, Flag, FALSE, )
+DEF_PARAM(fdip_bp_confidence, FDIP_BP_CONFIDENCE, Flag, Flag, FALSE, )
+DEF_PARAM(fdip_off_path_threshold, FDIP_OFF_PATH_THRESHOLD, uns     , uns     , 11    , )
+DEF_PARAM(fdip_off_path_conf_inc, FDIP_OFF_PATH_CONF_INC, uns     , uns     , 5    , )
+DEF_PARAM(fdip_utility_only_train_off_path, FDIP_UTILITY_ONLY_TRAIN_OFF_PATH, Flag, Flag, FALSE, )
+DEF_PARAM(fdip_ghist_bits, FDIP_GHIST_BITS, uns , uns     , 8    , )
+DEF_PARAM(fdip_btb_miss_sample_rate, FDIP_BTB_MISS_SAMPLE_RATE, uns, uns, 100000, )
+DEF_PARAM(fdip_btb_miss_rate_weight, FDIP_BTB_MISS_RATE_WEIGHT, uns, uns, 200, )
+DEF_PARAM(uftq_min_ftq_block_num, UFTQ_MIN_FTQ_BLOCK_NUM, uns, uns, 4, )
+DEF_PARAM(uftq_max_ftq_block_num, UFTQ_MAX_FTQ_BLOCK_NUM, uns, uns, 64, )
+DEF_PARAM(fdip_seniority_ftq_hold_cyc, FDIP_SENIORITY_FTQ_HOLD_CYC, uns, uns, 30000, )
+DEF_PARAM(fdip_perfect_prefetch, FDIP_PERFECT_PREFETCH, Flag, Flag, FALSE, )
+
+DEF_PARAM(fdip_dual_path_pref_ic_enable , FDIP_DUAL_PATH_PREF_IC_ENABLE    , Flag    , Flag    , FALSE, )
+DEF_PARAM(fdip_dual_path_pref_uoc_enable , FDIP_DUAL_PATH_PREF_UOC_ENABLE  , Flag    , Flag    , FALSE, ) //uop cache
+DEF_PARAM(top_mispred_br_filepath       , TOP_MISPRED_BR_FILEPATH          , char*   , string  , "br_resteer_coverage.csv", )
+
+DEF_PARAM(top_mispred_br_resteer_coverage, TOP_MISPRED_BR_RESTEER_COVERAGE , float   , float   , 0, )
+// Identify branches in an online fashion (vs offline)
+DEF_PARAM(fdip_dual_path_pref_uoc_online_enable , FDIP_DUAL_PATH_PREF_UOC_ONLINE_ENABLE  , Flag, Flag, FALSE, ) //uop cache
+DEF_PARAM(fdip_dual_path_pref_uoc_online_mispred_threshold, FDIP_DUAL_PATH_PREF_UOC_ONLINE_MISPRED_THRESHOLD, float, float, 1, )
+
+DEF_PARAM(fdip_btb_miss_bp_taken_conf, FDIP_BTB_MISS_BP_TAKEN_CONF, Flag, Flag, FALSE, )
+DEF_PARAM(fdip_btb_miss_bp_taken_conf_threshold, FDIP_BTB_MISS_BP_TAKEN_CONF_THRESHOLD, int, int, 0, )
+DEF_PARAM(fdip_btb_miss_rate_cycles_threshold, FDIP_BTB_MISS_RATE_CYCLES_THRESHOLD, float, float, 1.0, )
+
+// For infinite size, set BRANCH_MISPREDICTION_TABLE_SIZE to 0.
+DEF_PARAM(branch_misprediction_table_size, BRANCH_MISPREDICTION_TABLE_SIZE , uns     , uns     , 0    , )
+
+// FDIP issues uop cache prefetch concurrently with icache prefetch
+DEF_PARAM(uoc_pref                      , UOC_PREF                         , Flag    , Flag    , FALSE, )
+// Only prefetch the correct path into the uop cache.
+DEF_PARAM(uoc_oracle_pref               , UOC_ORACLE_PREF                  , Flag    , Flag    , FALSE, )
+DEF_PARAM(uoc_zero_latency_pref         , UOC_ZERO_LATENCY_PREF            , Flag    , Flag    , FALSE, )

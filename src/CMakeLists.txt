@@ -7,19 +7,20 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(enable_memtrace 0)
-set(flags_enable_memtrace "")
+set(flags_enable_pt_memtrace "")
 
-if(DEFINED ENV{SCARAB_ENABLE_MEMTRACE})
-  set(flags_enable_memtrace "-DENABLE_MEMTRACE")
+if(DEFINED ENV{SCARAB_ENABLE_PT_MEMTRACE})
+  set(flags_enable_pt_memtrace "-DENABLE_PT_MEMTRACE")
 endif()
 
-set(CMAKE_C_FLAGS_SCARABOPT   "-O3 -DNO_DEBUG -DLINUX -DX86_64 ${flags_enable_memtrace}")
-set(CMAKE_CXX_FLAGS_SCARABOPT "-O3 -DNO_DEBUG -DLINUX -DX86_64 ${flags_enable_memtrace}")
-set(CMAKE_C_FLAGS_VALGRIND    "-O0 -g3 -DLINUX -DX86_64 ${flags_enable_memtrace}")
-set(CMAKE_CXX_FLAGS_VALGRIND  "-O0 -g3 -DLINUX -DX86_64 ${flags_enable_memtrace}")
-set(CMAKE_C_FLAGS_GPROF       "${CMAKE_CXX_FLAGS_SCARABOPT} -pg -g3 ${flags_enable_memtrace}")
-set(CMAKE_CXX_FLAGS_GPROF     "${CMAKE_CXX_FLAGS_SCARABOPT} -pg -g3 ${flags_enable_memtrace}")
+set(CMAKE_C_FLAGS_SCARABOPT   "-O3 -DNO_DEBUG -DLINUX -DX86_64 ${flags_enable_pt_memtrace}")
+set(CMAKE_CXX_FLAGS_SCARABOPT "-O3 -DNO_DEBUG -DLINUX -DX86_64 ${flags_enable_pt_memtrace}")
+set(CMAKE_C_FLAGS_VALGRIND    "-O0 -g3 -DLINUX -DX86_64 ${flags_enable_pt_memtrace}")
+set(CMAKE_CXX_FLAGS_VALGRIND  "-O0 -g3 -DLINUX -DX86_64 ${flags_enable_pt_memtrace}")
+set(CMAKE_C_FLAGS_GPROF       "${CMAKE_CXX_FLAGS_SCARABOPT} -pg -g3 ${flags_enable_pt_memtrace}")
+set(CMAKE_CXX_FLAGS_GPROF     "${CMAKE_CXX_FLAGS_SCARABOPT} -pg -g3 ${flags_enable_pt_memtrace}")
+set(CMAKE_C_FLAGS_DEBUG       "-O0 -g3 -DLINUX -DX86_64 -fsanitize=address -fsanitize-address-use-after-scope ${flags_enable_pt_memtrace}")
+set(CMAKE_CXX_FLAGS_DEBUG     "-O0 -g3 -DLINUX -DX86_64 -fsanitize=address -fsanitize-address-use-after-scope ${flags_enable_pt_memtrace}")
 
 #build dependencies with default warn flags, otherwise dynamorio will not build
 add_subdirectory(deps)
@@ -34,8 +35,8 @@ set(warn_c_flags ${warn_flags}
 set(warn_cxx_flags ${warn_flags})
 
 add_compile_options(
-        "$<$<COMPILE_LANGUAGE:C>:${warn_c_flags}>"
-        "$<$<COMPILE_LANGUAGE:CXX>:${warn_cxx_flags}>"
+  "$<$<COMPILE_LANGUAGE:C>:${warn_c_flags}>"
+  "$<$<COMPILE_LANGUAGE:CXX>:${warn_cxx_flags}>"
 )
 
 add_subdirectory(ramulator)
@@ -43,8 +44,8 @@ add_subdirectory(pin/pin_lib)
 add_subdirectory(pin/pin_exec/testing)
 
 set(scarab_dirs bp debug bp/template_lib dvfs frontend globals isa libs memory power prefetcher .)
-if(DEFINED ENV{SCARAB_ENABLE_MEMTRACE})
-  set(scarab_dirs ${scarab_dirs} frontend/memtrace)
+if(DEFINED ENV{SCARAB_ENABLE_PT_MEMTRACE})
+  set(scarab_dirs ${scarab_dirs} frontend/pt_memtrace)
 endif()
 
 set(srcs)
@@ -68,6 +69,6 @@ target_link_libraries(scarab
         ramulator
         pin_lib_for_scarab
 )
-if(DEFINED ENV{SCARAB_ENABLE_MEMTRACE})
-  target_link_libraries(scarab PRIVATE dynamorio memtrace)
+if(DEFINED ENV{SCARAB_ENABLE_PT_MEMTRACE})
+  target_link_libraries(scarab PRIVATE dynamorio pt_memtrace)
 endif()

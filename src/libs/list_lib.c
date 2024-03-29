@@ -306,8 +306,12 @@ void* sl_list_remove_head(List* list) {
     if(list->tail == list->head) {
       list->head = NULL;
       list->tail = NULL;
-    } else
+      list->current = NULL;
+    } else {
+      if (list->head == list->current)
+        list->current = NULL;
       list->head = list->head->next;
+    }
     free_list_entry(list, free);
   } else {
     verify_list_counts(list);
@@ -335,7 +339,10 @@ void* dl_list_remove_head(List* list) {
     if(list->tail == list->head) {
       list->head = NULL;
       list->tail = NULL;
+      list->current = NULL;
     } else {
+      if (list->head == list->current)
+        list->current = NULL;
       list->head       = list->head->next;
       list->head->prev = NULL;
     }
@@ -365,7 +372,10 @@ void* dl_list_remove_tail(List* list) {
     if(list->tail == list->head) {
       list->head = NULL;
       list->tail = NULL;
+      list->current = NULL;
     } else {
+      if (list->tail == list->current)
+        list->current = NULL;
       list->tail       = list->tail->prev;
       list->tail->next = NULL;
     }

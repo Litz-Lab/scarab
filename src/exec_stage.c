@@ -61,7 +61,7 @@
 
 Exec_Stage* exec = NULL;
 int         op_type_delays[NUM_OP_TYPES];
-
+int         exec_off_path;
 /**************************************************************************************/
 /* Prototypes */
 
@@ -136,6 +136,7 @@ void reset_exec_stage() {
 
 void recover_exec_stage() {
   uns ii;
+  exec_off_path = 0;
   for(ii = 0; ii < NUM_FUS; ii++) {
     Func_Unit* fu = &exec->fus[ii];
     Op*        op = exec->sd.ops[ii];
@@ -179,8 +180,21 @@ void debug_exec_stage() {
 void update_exec_stage(Stage_Data* src_sd) {
   uns ii;
   ASSERT(exec->proc_id, exec->sd.op_count <= exec->sd.max_op_count);
-
   // {{{ phase 1 - success/failure of latching and wake up of dependent ops
+  if (!exec_off_path) {
+    if (exec->sd.op_count)
+      STAT_EVENT(exec->proc_id, EXEC_STAGE_STARVED);
+    else
+      STAT_EVENT(exec->proc_id, EXEC_STAGE_NOT_STARVED);
+  }
+  else
+    STAT_EVENT(exec->proc_id, EXEC_STAGE_OFF_PATH);
+
+  for(ii = 0; ii < src_sd->max_op_count; ii++) {
+    if (src_sd->ops[ii] && src_sd->ops[ii]->off_path)
+      exec_off_path = 1;
+  }
+
   for(ii = 0; ii < src_sd->max_op_count; ii++) {
     Func_Unit* fu  = &exec->fus[ii];
     Op*        op  = src_sd->ops[ii];
@@ -360,17 +374,28 @@ void update_exec_stage(Stage_Data* src_sd) {
         bp_resolve_op(g_bp_data, op);
       }
 
-      if(op->oracle_info.mispred || op->oracle_info.misfetch) {
+      if (op->oracle_info.recover_at_exec){
         bp_sched_recovery(bp_recovery_info, op, op->exec_cycle,
                           /*late_bp_recovery=*/FALSE, /*force_offpath=*/FALSE);
         if(!op->off_path)
           op->recovery_scheduled = TRUE;
-      } else if(op->table_info->cf_type >= CF_IBR &&
+
+        // stats for the reason of resteer
+        if(op->oracle_info.mispred)
+          STAT_EVENT(op->proc_id, RESTEER_MISPRED_NOT_CF + op->table_info->cf_type);
+        else
+          STAT_EVENT(op->proc_id, RESTEER_MISFETCH_NOT_CF + op->table_info->cf_type);
+
+      }
+      /*      else if(op->table_info->cf_type >= CF_IBR &&
                 op->oracle_info.no_target) {
         ASSERT(bp_recovery_info->proc_id,
                bp_recovery_info->proc_id == op->proc_id);
         bp_sched_redirect(bp_recovery_info, op, op->exec_cycle);
-      }
+        // stats for the reason of resteer
+        STAT_EVENT(op->proc_id, RESTEER_NO_TARGET_CF_IBR + op->table_info->cf_type - CF_IBR);
+        ASSERT(0,0);
+        }*/
     }
     // }}}
 

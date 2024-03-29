@@ -44,10 +44,17 @@
 #include "op_pool.h"
 #include "prefetcher/pref.param.h"
 #include "prefetcher/pref_common.h"
+/*#include "prefetcher/fdip.h"*/
+#include "prefetcher/fdip_new.h"
+#include "prefetcher/eip.h"
+#include "prefetcher/D_JOLT.h"
+#include "prefetcher/FNL+MMA.h"
 #include "sim.h"
 #include "statistics.h"
 
 #include "freq.h"
+#include "uop_queue_stage.h"
+#include "decoupled_frontend.h"
 
 Flag perf_pred_started = FALSE;
 
@@ -95,9 +102,10 @@ void cmp_init(uns mode) {
     cmp_init_thread_data(proc_id);
 
     init_icache_stage(proc_id, "ICACHE");
-    init_icache_trace();
 
     init_decode_stage(proc_id, "DECODE");
+
+    init_uop_queue_stage();
 
     init_map_stage(proc_id, "MAP");
 
@@ -112,6 +120,14 @@ void cmp_init(uns mode) {
     /* initialize the common data structures */
     init_bp_recovery_info(proc_id, &cmp_model.bp_recovery_info[proc_id]);
     init_bp_data(proc_id, &cmp_model.bp_data[proc_id]);
+    init_uop_cache(proc_id);
+
+    init_decoupled_fe(proc_id, "DCFE");
+
+    init_fdip(proc_id);
+    init_eip(proc_id);
+    init_djolt(proc_id);
+    init_fnlmma(proc_id);
   }
 
   cmp_model.window_size = NODE_TABLE_SIZE;
@@ -140,6 +156,7 @@ void cmp_reset() {
 
   for(proc_id = 0; proc_id < NUM_CORES; proc_id++) {
     cmp_set_all_stages(proc_id);
+    reset_decoupled_fe();
     reset_icache_stage();
     reset_decode_stage();
     reset_map_stage();
@@ -176,7 +193,6 @@ void cmp_istreams(void) {
       cycle_count = freq_cycle_count(FREQ_DOMAIN_CORES[proc_id]);
 
       set_bp_recovery_info(&cmp_model.bp_recovery_info[proc_id]);
-
       if(cycle_count >= bp_recovery_info->recovery_cycle) {
         set_bp_data(&cmp_model.bp_data[proc_id]);
         cmp_set_all_stages(proc_id);
@@ -208,8 +224,17 @@ void cmp_cores(void) {
       update_dcache_stage(&exec->sd);
       update_exec_stage(&node->sd);
       update_node_stage(map->last_sd);
-      update_map_stage(dec->last_sd);
+      // Map stage can get ops from either the uop queue following the uop cache
+      // or the decoder.
+      Stage_Data* map_stage_uop_cache_src = get_uop_queue_stage_length() > 0 ? uop_queue_stage_get_latest_sd() : &ic->sd;
+      // doesnt work: decode_stage_process_op must be called once per op. For uop cache, one cycle after fetch.
+      // I can add a flag: decode_cycle (cycle decoded).
+      update_map_stage(dec->last_sd, map_stage_uop_cache_src);
+      update_uop_queue_stage(&ic->sd);
       update_decode_stage(&ic->sd);
+      update_decoupled_fe();
+      update_fdip();
+      update_eip();
       update_icache_stage();
 
       node_sched_ops();
@@ -231,7 +256,7 @@ void cmp_debug() {
     // cmp FIXME print out per core information
     FPRINT_LINE(proc_id, GLOBAL_DEBUG_STREAM);
     cmp_set_all_stages(proc_id);
-
+    debug_decoupled_fe();
     debug_icache_stage();
     debug_decode_stage();
     debug_map_stage();
@@ -317,7 +342,6 @@ void cmp_recover() {
          bp_recovery_info->proc_id == map_data->proc_id);
   bp_recovery_info->recovery_cycle = MAX_CTR;
   bp_recovery_info->redirect_cycle = MAX_CTR;
-
   bp_recover_op(g_bp_data, bp_recovery_info->recovery_cf_type,
                 &bp_recovery_info->recovery_info);
 
@@ -339,8 +363,12 @@ void cmp_recover() {
                  bp_recovery_info->recovery_inst_uid,
                  bp_recovery_info->late_bp_recovery_wrong);
 
+  recover_decoupled_fe(bp_recovery_info->proc_id);
+  recover_fdip();
   recover_icache_stage();
+  recover_uop_cache();
   recover_decode_stage();
+  recover_uop_queue_stage();
   recover_map_stage();
   recover_node_stage();
   recover_exec_stage();
@@ -352,6 +380,8 @@ void cmp_recover() {
 /* cmp_redirect: */
 
 void cmp_redirect() {
+  // Scarab no longer supports redirect and instead recovers on BTB misses
+  ASSERT(bp_recovery_info->proc_id, 0);
   _DEBUG(bp_recovery_info->proc_id, DEBUG_BP, "Redirect caused by op_num:%s\n",
          unsstr64(bp_recovery_info->redirect_op_num));
   ASSERT(bp_recovery_info->proc_id,
@@ -410,6 +440,8 @@ void cmp_warmup(Op* op) {
   Addr ia      = op->inst_info->addr;
   Addr va      = op->oracle_info.va;
   Addr dummy_line_addr;
+  Addr dummy_line_addr2;
+  Icache_Data* line_info = NULL;
 
   // Warmup caches for instructions
   Icache_Stage* ic = &(cmp_model.icache_stage[proc_id]);
@@ -421,11 +453,28 @@ void cmp_warmup(Op* op) {
   Cache*      icache  = &(ic->icache);
   Inst_Info** ic_data = (Inst_Info**)cache_access(icache, ia, &dummy_line_addr,
                                                   TRUE);
-  if(!ic_data) {
+  if(WP_COLLECT_STATS)
+    line_info = (Icache_Data*)cache_access(&ic->icache_line_info, ia, &dummy_line_addr2, TRUE);
+
+  if(ic_data == NULL) {
     warmup_uncore(proc_id, ia, FALSE);
     Addr repl_line_addr;
     ic_data = (Inst_Info**)cache_insert(icache, proc_id, ia, &dummy_line_addr,
                                         &repl_line_addr);
+    if(WP_COLLECT_STATS) {
+      Addr repl_line_addr2;
+      line_info = (Icache_Data*)cache_insert(&ic->icache_line_info, proc_id, ia,
+                                                          &dummy_line_addr2, &repl_line_addr2);
+      if(repl_line_addr2 && !line_info->read_count[0])
+        inc_cnt_unuseful(proc_id, repl_line_addr2);
+      line_info->read_count[0] = 0;
+    }
+  } else {
+    if(WP_COLLECT_STATS && FDIP_ENABLE) {
+      ASSERT(proc_id, line_info);
+      inc_cnt_useful(proc_id, dummy_line_addr, FALSE);
+      line_info->read_count[0] += 1;
+    }
   }
 
   // Warmup caches for data

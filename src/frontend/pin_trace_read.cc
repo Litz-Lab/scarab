@@ -35,6 +35,7 @@
 #include "isa/isa.h"
 
 extern "C" {
+#include "globals/assert.h"
 #include "globals/utils.h"
 }
 

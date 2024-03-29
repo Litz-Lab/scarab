@@ -60,7 +60,11 @@ void reset_decode_stage(void);
 void recover_decode_stage(void);
 void debug_decode_stage(void);
 void update_decode_stage(Stage_Data*);
+// Needed when ops skip the decode stage when fetched from the uop cache.
+void decode_stage_process_op(Op*);
 
+// For stats
+int get_decode_stages_filled(void);
 
 /**************************************************************************************/
 

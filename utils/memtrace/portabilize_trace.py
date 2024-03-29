@@ -37,7 +37,7 @@ with open(traceDir + '/bin/modules.log', 'r') as infile :
                 if ss[3] == '5':
                     col = 8
                 #earlier versions
-                elif ss[3] < 5:
+                elif ss[3] < '5':
                     col = 7
                 else:
                     print('new file format, please add support')
@@ -56,7 +56,7 @@ with open(traceDir + '/bin/modules.log', 'r') as infile :
         
         data.append(separator.join(s))
 
-with open(traceDir + '/raw/modules.log', 'w') as outfile:
+with open(traceDir + '/bin/modules.log', 'w') as outfile:
     for wline in data:
         outfile.write(wline)
 

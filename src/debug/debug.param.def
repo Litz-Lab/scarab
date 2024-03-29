@@ -81,8 +81,11 @@ DEF_PARAM(  debug_freq,            DEBUG_FREQ,            Flag,  Flag,  FALSE,  
 DEF_PARAM(  debug_model,           DEBUG_MODEL,           Flag,  Flag,  FALSE,  )
 DEF_PARAM(  debug_thread,          DEBUG_THREAD,          Flag,  Flag,  FALSE,  )
 
+DEF_PARAM(  debug_decoupled_fe,    DEBUG_DECOUPLED_FE,    Flag,  Flag,  FALSE,  )
 DEF_PARAM(  debug_icache_stage,    DEBUG_ICACHE_STAGE,    Flag,  Flag,  FALSE,  )
 DEF_PARAM(  debug_decode_stage,    DEBUG_DECODE_STAGE,    Flag,  Flag,  FALSE,  )
+DEF_PARAM(  debug_uop_cache,       DEBUG_UOP_CACHE,       Flag,  Flag,  FALSE,  )
+DEF_PARAM(  debug_uop_queue_stage, DEBUG_UOP_QUEUE_STAGE, Flag,  Flag,  FALSE,  )
 DEF_PARAM(  debug_map_stage,       DEBUG_MAP_STAGE,       Flag,  Flag,  FALSE,  )
 DEF_PARAM(  debug_node_stage,      DEBUG_NODE_STAGE,      Flag,  Flag,  FALSE,  )
 DEF_PARAM(  debug_exec_stage,      DEBUG_EXEC_STAGE,      Flag,  Flag,  FALSE,  )
@@ -118,3 +121,8 @@ DEF_PARAM( debug_cache_part                        , DEBUG_CACHE_PART           
 
 DEF_PARAM( debug_optimizer2                        , DEBUG_OPTIMIZER2                     , Flag    , Flag      , FALSE   ,       )
 DEF_PARAM( debug_pref                              , DEBUG_PREF                          , Flag            , Flag               , FALSE     ,    )
+
+DEF_PARAM( debug_fdip                              , DEBUG_FDIP                           , Flag    , Flag      , FALSE   ,       )
+DEF_PARAM( debug_eip                               , DEBUG_EIP                            , Flag    , Flag      , FALSE   ,       )
+DEF_PARAM( debug_djolt                             , DEBUG_DJOLT                          , Flag    , Flag      , FALSE   ,       )
+DEF_PARAM( debug_fnlmma                            , DEBUG_FNLMMA                         , Flag    , Flag      , FALSE   ,       )

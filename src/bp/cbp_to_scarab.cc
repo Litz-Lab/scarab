@@ -11,6 +11,7 @@
 
 /**Add CBP Header Below**/
 #include "mtage_unlimited.h"
+#include "cbp_tagescl_64k.h"
 /************************/
 
 /******DO NOT MODIFY BELOW THIS POINT*****/
@@ -21,6 +22,7 @@
  */
 
 #include "cbp_to_scarab.h"
+#include "bp/bp.param.h"
 
 template <typename CBP_CLASS>
 class CBP_To_Scarab_Intf {
@@ -47,7 +49,7 @@ class CBP_To_Scarab_Intf {
     uns proc_id = op->proc_id;
     if(op->off_path)
       return op->oracle_info.dir;
-    return cbp_predictors.at(proc_id).GetPrediction(op->inst_info->addr);
+    return cbp_predictors.at(proc_id).GetPrediction(op->inst_info->addr, &op->bp_confidence);
   }
 
   void spec_update(Op* op) {
@@ -79,6 +81,10 @@ class CBP_To_Scarab_Intf {
   void recover(Recovery_Info*) {
     /* CBP Interface does not support speculative updates */
   }
+
+  Flag full(uns proc_id) {
+    return cbp_predictors.at(proc_id).IsFull();
+  }
 };
 
 /******DO NOT MODIFY BELOW THIS POINT*****/
@@ -107,9 +113,11 @@ class CBP_To_Scarab_Intf {
   SCARAB_BP_INTF_FUNC_IMPL(CBP_CLASS, spec_update, , void, Op*, op) \
   SCARAB_BP_INTF_FUNC_IMPL(CBP_CLASS, update, , void, Op*, op)      \
   SCARAB_BP_INTF_FUNC_IMPL(CBP_CLASS, retire, , void, Op*, op)      \
-  SCARAB_BP_INTF_FUNC_IMPL(CBP_CLASS, recover, , void, Recovery_Info*, info)
+  SCARAB_BP_INTF_FUNC_IMPL(CBP_CLASS, recover, , void, Recovery_Info*, info) \
+  SCARAB_BP_INTF_FUNC_IMPL(CBP_CLASS, full, return, Flag, uns, proc_id)
 
 #include "cbp_table.def"
+
 #undef DEF_CBP
 #undef SCARAB_BP_INF_FUNC_IMPL
 #undef CBP_PREDICTOR

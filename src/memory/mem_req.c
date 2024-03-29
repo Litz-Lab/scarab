@@ -56,7 +56,7 @@ Flag mem_req_type_is_demand(Mem_Req_Type type) {
 /* mem_req_type_is_prefetch */
 
 Flag mem_req_type_is_prefetch(Mem_Req_Type type) {
-  return type == MRT_IPRF || type == MRT_DPRF;
+  return type == MRT_IPRF || type == MRT_DPRF || type == MRT_UOCPRF || type == MRT_FDIPPRFON || type == MRT_FDIPPRFOFF;
 }
 
 /**************************************************************************************/
@@ -65,4 +65,16 @@ Flag mem_req_type_is_prefetch(Mem_Req_Type type) {
 Flag mem_req_type_is_stalling(Mem_Req_Type type) {
   return type == MRT_IFETCH || type == MRT_DFETCH ||
          (!STORES_DO_NOT_BLOCK_WINDOW && type == MRT_DSTORE);
+}
+
+Flag mem_req_is_type(Mem_Req* req, Mem_Req_Type type) {
+  return TESTBIT(req->types, type);
+}
+
+void mem_req_set_types(Mem_Req* req, Mem_Req_Type type) {
+  SETBIT(req->types, type);
+}
+
+void mem_req_clr_types(Mem_Req* req, Mem_Req_Type type) {
+  CLRBIT(req->types, type);
 }

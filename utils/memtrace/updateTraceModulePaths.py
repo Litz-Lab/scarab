@@ -41,7 +41,7 @@ with open(traceDir + '/bin/modules.log', 'r') as infile:
                 if ss[3] == '5':
                     col = 8
                 #earlier versions
-                elif ss[3] < 5:
+                elif ss[3] < '5':
                     col = 7
                 else:
                     print('new file format, please add support')

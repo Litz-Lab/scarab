@@ -45,6 +45,8 @@ extern "C" {
 
 #include <time.h>
 
+extern int *off_path;
+
 #define DEBUG(proc_id, args...) _DEBUG(proc_id, DEBUG_PIN_EXEC_DRIVEN, ##args)
 
 Server*                          server;
@@ -134,8 +136,25 @@ void pin_exec_driven_fetch_op(uns proc_id, Op* op) {
 
   Flag eom = uop_generator_extract_op(proc_id, op,
                                       &cached_cop_buffers[proc_id].front());
-  if(eom)
+  if(eom) {
+    if(!*off_path) {
+      if(cached_cop_buffers[proc_id].front().scarab_marker_roi_begin == true) {
+        ASSERT(proc_id, !roi_dump_began);
+        // reset stats
+        printf("Reached roi dump begin marker, reset stats\n");
+        reset_stats(TRUE);
+        roi_dump_began = TRUE;
+      } else if(cached_cop_buffers[proc_id].front().scarab_marker_roi_end == true) {
+        ASSERT(proc_id, roi_dump_began);
+        // dump stats
+        printf("Reached roi dump end marker, dump stats between\n");
+        dump_stats(proc_id, TRUE, global_stat_array[proc_id], NUM_GLOBAL_STATS);
+        roi_dump_began = FALSE;
+        roi_dump_ID ++;
+      }
+    }
     cached_cop_buffers[proc_id].pop_front();
+  }
 
   DEBUG(proc_id, "Fetch Op end: %llx (%llu)\n", op->fetch_addr, op->inst_uid);
 }

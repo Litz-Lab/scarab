@@ -39,6 +39,10 @@
 #include "globals/global_vars.h"
 #include "statistics.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**************************************************************************************/
 /* Compiled breakpoint.  Calls breakpoint() when condition is true. */
 
@@ -377,5 +381,10 @@ int   parse_string_array(char dest[][MAX_STR_LENGTH + 1], const void* str,
 
 /* for use in qsort */
 int compare_uns64(const void*, const void*);
+
+#ifdef __cplusplus
+}
+
+#endif
 
 #endif /* #ifndef __UTILS_H__ */

@@ -309,7 +309,7 @@ You then create a new `iclass_to_scarab` struct entry and place it at
 the index of the corresponding `xed_iclass_enum_t` enum member in the
 array `iclass_to_scarab_map`. This is done inside
 `init_pin_opcode_convert()` in
-[src/pin/pin_lib/decoder.cc](../../../src/pin/pin_lib/decoder.cc). Here are some examples for some
+[src/pin/pin_lib/x86_decoder.cc](../../../src/pin/pin_lib/x86_decoder.cc). Here are some examples for some
 of the instructions we've talked about in this tutorial:
 
 `iclass_to_scarab_map[XED_ICLASS_ADD] = {OP_IADD, -1, 1, NONE};`

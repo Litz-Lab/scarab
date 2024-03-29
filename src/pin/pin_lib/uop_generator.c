@@ -44,7 +44,9 @@
 #include "../../isa/isa.h"
 #include "../../libs/hash_lib.h"
 
+#include "libs/cpp_hash_lib_wrapper.h"
 #include "uop_generator.h"
+#include "math.h"
 
 /**************************************************************************************/
 /* Macros */
@@ -106,12 +108,10 @@ char dbg_print_buf[1024];
 Trace_Uop*** trace_uop_bulk;
 Flag*        bom;
 Flag*        eom;
+Flag*        fetched_instruction;
 uns*         num_sending_uop;
 uns*         num_uops;
 Addr*        last_ga_va;
-
-Hash_Table*
-  inst_info_hash; /* hash table of all static instruction information */
 
 /**************************************************************************************/
 /* Local prototypes */
@@ -211,12 +211,6 @@ static void print_op_fields(uns proc_id, Op* op) {
 }
 
 void uop_generator_init(uint32_t num_cores) {
-  inst_info_hash = (Hash_Table*)malloc(num_cores * sizeof(Hash_Table));
-  for(uns ii = 0; ii < num_cores; ii++) {
-    init_hash_table(&inst_info_hash[ii], "instruction hash table",
-                    INST_HASH_TABLE_SIZE, sizeof(Inst_Info));
-  }
-
   trace_uop_bulk = (Trace_Uop***)malloc(num_cores * sizeof(Trace_Uop**));
   for(uns ii = 0; ii < num_cores; ii++) {
     trace_uop_bulk[ii] = (Trace_Uop**)malloc(MAX_PUP * sizeof(Trace_Uop*));
@@ -229,6 +223,8 @@ void uop_generator_init(uint32_t num_cores) {
   memset(bom, 1, num_cores * sizeof(Flag));
   eom = (Flag*)malloc(num_cores * sizeof(Flag));
   memset(eom, 1, num_cores * sizeof(Flag));
+  fetched_instruction = (Flag*)malloc(num_cores * sizeof(Flag));
+  memset(fetched_instruction, 1, num_cores * sizeof(Flag));
   num_uops = (uns*)malloc(num_cores * sizeof(uns));
   memset(num_uops, 0, num_cores * sizeof(uns));
   num_sending_uop = (uns*)malloc(num_cores * sizeof(uns));
@@ -317,18 +313,19 @@ void uop_generator_get_uop(uns proc_id, Op* op, ctype_pin_inst* inst) {
 
     num_sending_uop[proc_id] = 1;
     eom[proc_id]             = trace_uop->eom;
+    fetched_instruction[proc_id] = inst->fetched_instruction;
 
     DEBUG(proc_id,
           "read pi, addr is 0x%s next_addr: 0x%s op_type:%s num_st:%d "
           "num_ld:%d is_fp:%d cf_type:%d size:%d branch_target:%s ld_size:%d "
           "st_size:%d %s taken:%d "
-          "num_uop:%d eom:%d\n",
+          "num_uop:%d eom:%d bar:%i\n",
           hexstr64s(inst->instruction_addr),
           hexstr64s(inst->instruction_next_addr), Op_Type_str(inst->op_type),
           inst->num_st, inst->num_ld, inst->is_fp, inst->cf_type, inst->size,
           hexstr64s(inst->branch_target), inst->ld_size, inst->st_size,
           ctype_pin_inst_ld_and_st_addrs(proc_id, inst), inst->actually_taken,
-          num_uops[proc_id], eom[proc_id]);
+          num_uops[proc_id], eom[proc_id], info->table_info->bar_type);
   } else {
     trace_uop = trace_uop_array[num_sending_uop[proc_id]];
     ASSERTM(proc_id, trace_uop, "%i\n", num_sending_uop[proc_id]);
@@ -351,6 +348,7 @@ void uop_generator_get_uop(uns proc_id, Op* op, ctype_pin_inst* inst) {
   op->proc_id                  = proc_id;
   op->thread_id                = 0;
   op->eom                      = trace_uop->eom;
+  op->fetched_instruction      = fetched_instruction[proc_id];
   op->inst_info                = info;
   op->table_info               = info->table_info;
   op->oracle_info.inst_info    = info;
@@ -398,8 +396,15 @@ void uop_generator_get_uop(uns proc_id, Op* op, ctype_pin_inst* inst) {
 
   /* execute op */
 
-  if(op->table_info->op_type == OP_CF)
-    op->oracle_info.dir = (trace_uop->actual_taken == 0) ? NOT_TAKEN : TAKEN;
+  if(op->table_info->op_type == OP_CF) {
+    if (op->table_info->cf_type == CF_CBR) {
+      op->oracle_info.dir = (trace_uop->actual_taken == 0) ? NOT_TAKEN : TAKEN;
+    } else {
+      //assume that all CFs besides CBR are actually always taken. This fixes the
+      //issue where fall-through PC == target.
+      op->oracle_info.dir = TAKEN;
+    }
+  }
   else
     op->oracle_info.dir = NOT_TAKEN;
 
@@ -824,30 +829,31 @@ static uns generate_uops(uns8 proc_id, ctype_pin_inst* pi,
   return idx;
 }
 
-static Addr convert_pinuop_inst_addr_to_key_addr(
-  const uint64_t instruction_addr) {
-  // allows for up to 2^5=32 uops per macro instruction
-  return (instruction_addr << 5);
-}
-
 void convert_pinuop_to_t_uop(uns8 proc_id, ctype_pin_inst* pi,
                              Trace_Uop** trace_uop) {
   Flag new_entry = FALSE;
-  Addr key_addr  = convert_pinuop_inst_addr_to_key_addr(pi->instruction_addr);
   Inst_Info* info;
+  // Due to JIT compilation, each branch must be decoded to verify which instruction the PC maps to.
+  // To decrease unnecessary malloc/free, fetch inst_info from hashmap
+  // instead of allocating. However first instruction must be decoded.
+  static Inst_Info dummy_nop;
+  static Flag generated_dummy_nop = FALSE;
   if(pi->fake_inst) {
     info                   = (Inst_Info*)calloc(1, sizeof(Inst_Info));
+    if (generated_dummy_nop) {
+      *info = dummy_nop;
+      info->addr = pi->instruction_addr;
+    }
     info->fake_inst        = TRUE;
     info->fake_inst_reason = pi->fake_inst_reason;
   } else {
-    info = (Inst_Info*)hash_table_access_create(&inst_info_hash[proc_id],
-                                                key_addr, &new_entry);
+    info = cpp_hash_table_access_create(proc_id, pi->instruction_addr, pi->inst_binary_lsb,
+                                        pi->inst_binary_msb, 0, &new_entry);
     info->fake_inst        = FALSE;
     info->fake_inst_reason = WPNM_NOT_IN_WPNM;
   }
   int ii;
   int num_uop = 0;
-
   if(pi->is_string) {
     pi->branch_target  = pi->instruction_addr;
     pi->actually_taken = (pi->branch_target == pi->instruction_next_addr);
@@ -864,12 +870,15 @@ void convert_pinuop_to_t_uop(uns8 proc_id, ctype_pin_inst* pi,
     pi->st_vaddr[st] = convert_to_cmp_addr(proc_id, pi->st_vaddr[st]);
   }
 
-  Flag need_to_gen_uops = new_entry || pi->fake_inst ||
+  Flag need_to_gen_uops = new_entry || (pi->fake_inst && !generated_dummy_nop) ||
                           pi->is_gather_scatter /* always regenerate uops for
                                                    gather/scatter, because the
                                                    num of uops could be
                                                    different every time*/
     ;
+
+  if (pi->fake_inst && !generated_dummy_nop)
+    generated_dummy_nop = TRUE;
 
   if(need_to_gen_uops) {
     num_uop = generate_uops(proc_id, pi, trace_uop);
@@ -884,14 +893,14 @@ void convert_pinuop_to_t_uop(uns8 proc_id, ctype_pin_inst* pi,
           info->fake_inst        = TRUE;
           info->fake_inst_reason = pi->fake_inst_reason;
         } else {
-          key_addr =
-            (convert_pinuop_inst_addr_to_key_addr(pi->instruction_addr) + ii);
-          info = (Inst_Info*)hash_table_access_create(&inst_info_hash[proc_id],
-                                                      key_addr, &new_entry);
+          info = cpp_hash_table_access_create(proc_id, pi->instruction_addr, pi->inst_binary_lsb,
+                                              pi->inst_binary_msb, ii, &new_entry);
+
           info->fake_inst        = FALSE;
           info->fake_inst_reason = WPNM_NOT_IN_WPNM;
         }
       }
+      need_to_gen_uops = new_entry || pi->fake_inst || pi->is_gather_scatter;
       ASSERT(proc_id, need_to_gen_uops);
 
       trace_uop[ii]->addr      = pi->instruction_addr;
@@ -899,7 +908,7 @@ void convert_pinuop_to_t_uop(uns8 proc_id, ctype_pin_inst* pi,
 
       if(ii == (num_uop - 1)) {
         /* last uop's info */
-        if(pi->is_ifetch_barrier) {
+        if(pi->is_ifetch_barrier && !IGNORE_BAR_FETCH) {
           trace_uop[num_uop - 1]->bar_type = BAR_FETCH;  // only the last
                                                          // instruction will
                                                          // have bar type
@@ -925,6 +934,10 @@ void convert_pinuop_to_t_uop(uns8 proc_id, ctype_pin_inst* pi,
       Flag is_last_uop = (ii == (num_uop - 1));
       convert_dyn_uop(proc_id, info, pi, trace_uop[ii],
                       info->table_info->mem_size, is_last_uop);
+      if  (pi->fake_inst) {
+        ASSERT(0, generated_dummy_nop);
+        dummy_nop = *info;
+      }
     }
   } else {
     // instructions is decoded before .
@@ -934,10 +947,8 @@ void convert_pinuop_to_t_uop(uns8 proc_id, ctype_pin_inst* pi,
 
     for(ii = 0; ii < num_uop; ii++) {
       if(ii > 0) {
-        key_addr = (convert_pinuop_inst_addr_to_key_addr(pi->instruction_addr) +
-                    ii);
-        info = (Inst_Info*)hash_table_access_create(&inst_info_hash[proc_id],
-                                                    key_addr, &new_entry);
+        info = cpp_hash_table_access_create(proc_id, pi->instruction_addr, pi->inst_binary_lsb,
+                                        pi->inst_binary_msb, ii, &new_entry);
       }
       ASSERT(proc_id, !new_entry);
 
