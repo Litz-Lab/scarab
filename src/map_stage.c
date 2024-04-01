@@ -205,7 +205,8 @@ void update_map_stage(Stage_Data* dec_src_sd, Stage_Data* uopq_src_sd, Flag uopq
     // When the uop cache is enabled, the next op to be consumed by the map stage
     // is from either the decode stage or the uop cache source.
     // The uop cache source is either the uop queue or the icache stage bypassing the uop queue.
-    // The map stage may consume from both if allowed.
+    // The map stage may consume multiple ops in one cycle from both
+    // the map stage and the uop cache source if allowed.
     ASSERT(map->proc_id, uopq_src_sd != NULL);
     if (dec_src_sd->op_count && dec_src_sd->ops[0]->op_num == map_stage_next_op_num) {
       consume_from_sd = dec_src_sd;
