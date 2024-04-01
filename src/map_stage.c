@@ -178,6 +178,7 @@ void update_map_stage(Stage_Data* dec_src_sd, Stage_Data* uopq_src_sd, Flag uopq
   Stage_Data* other_sd = NULL;
   Flag consume_from_is_icache = FALSE;
   Flag other_is_icache = FALSE;
+  Flag fetch_from_both_srcs = FALSE;
   Stage_Data *cur, *prev;
   Op**        temp;
   uns         ii;
@@ -200,24 +201,40 @@ void update_map_stage(Stage_Data* dec_src_sd, Stage_Data* uopq_src_sd, Flag uopq
   // via the uop queue.
   // Only consume if older ops have already been consumed by this stage.
   cur = &map->sds[STAGE_MAX_DEPTH - 1];
-  if (dec_src_sd->op_count && dec_src_sd->ops[0]->op_num == map_stage_next_op_num) {
-    consume_from_sd = dec_src_sd;
-    consume_from_is_icache = FALSE;
-    other_sd = uopq_src_sd;  //can only consume ALL ops from this stage if the other sd has them ready. Otherwise only the first few
-    if (uopq_src_is_icache) {
-      other_is_icache = TRUE;
-    } else {
+  if (UOP_CACHE_ENABLE) {
+    // When the uop cache is enabled, the next op to be consumed by the map stage
+    // is from either the decode stage or the uop cache source.
+    // The uop cache source is either the uop queue or the icache stage bypassing the uop queue.
+    // The map stage may consume from both if allowed.
+    ASSERT(map->proc_id, uopq_src_sd != NULL);
+    if (dec_src_sd->op_count && dec_src_sd->ops[0]->op_num == map_stage_next_op_num) {
+      consume_from_sd = dec_src_sd;
+      consume_from_is_icache = FALSE;
+      other_sd = uopq_src_sd;  //can only consume ALL ops from this stage if the other sd has them ready. Otherwise only the first few
+      if (uopq_src_is_icache) {
+        other_is_icache = TRUE;
+      } else {
+        other_is_icache = FALSE;
+      }
+    } else if (uopq_src_sd->op_count && uopq_src_sd->ops[0]->op_num == map_stage_next_op_num) {
+      consume_from_sd = uopq_src_sd;
+      if (uopq_src_is_icache) {
+        consume_from_is_icache = TRUE;
+      } else {
+        consume_from_is_icache = FALSE;
+      }
+      other_sd = dec_src_sd;
       other_is_icache = FALSE;
     }
-  } else if (uopq_src_sd->op_count && uopq_src_sd->ops[0]->op_num == map_stage_next_op_num) {
-    consume_from_sd = uopq_src_sd;
-    if (uopq_src_is_icache) {
-      consume_from_is_icache = TRUE;
-    } else {
-      consume_from_is_icache = FALSE;
+    fetch_from_both_srcs = UOC_IC_SWITCH_FRAG_DISABLE && cur->max_op_count >= consume_from_sd->op_count + other_sd->op_count;
+  } else {
+    // When the uop cache is disabled, the next op to be consumed by the map stage
+    // is from the decode stage.
+    ASSERT(map->proc_id, uopq_src_sd == NULL);
+    if (dec_src_sd->op_count) {
+      ASSERT(map->proc_id, dec_src_sd->ops[0]->op_num == map_stage_next_op_num);
+      consume_from_sd = dec_src_sd;
     }
-    other_sd = dec_src_sd;
-    other_is_icache = FALSE;
   }
 
   if(!map_off_path) {
@@ -236,7 +253,6 @@ void update_map_stage(Stage_Data* dec_src_sd, Stage_Data* uopq_src_sd, Flag uopq
   // Consume interleaved from both srcs if UOC_IC_SWITCH_FRAG_DISABLE.
   // Else, only consume from one src
   if (cur->op_count == 0 && consume_from_sd) {
-    const Flag fetch_from_both_srcs = UOC_IC_SWITCH_FRAG_DISABLE && cur->max_op_count >= consume_from_sd->op_count + other_sd->op_count;
     int cfsd_ii = 0;  // consume_from_sd idx
     int osd_ii  = 0;  // other_sd idx
     Flag fetched_cfsd = FALSE;
