@@ -316,6 +316,29 @@ static inline Flag map_fetch_fill_op(Stage_Data* src_sd, int* fetch_idx, Flag sr
   // The only case where icache sd can be consumed by the map stage is
   // when the instruction is fetched from uop and needs to bypass the uop queue.
   // So if the instruction is not fetched from uop, it cannot be used at this moment.
+
+  // More detailed explanations:
+  // Q: If `src_is_icache` is true, how can the op be `fetched_from_uop_cache`?
+  // A: In the first cycle of the icache stage, we look up both icache and the uop cache.
+  // No matter where the ops come from (icache or uop cache), they are added to the icache stage data,
+  // and the way to distinguish them is to look at `fetched_from_uop_cache` of each op.
+  // If in the first icache cycle the uop queue is NOT empty,
+  // the ops fetched from the uop cache will be added to the uop queue in the next cycle;
+  // otherwise, if the uop queue is empty,
+  // the ops fetched from the uop cache can bypass the uop queue and go directly to the map stage in the next cycle.
+  // This API is supposed to consume ops from the icache stage only in the latter case,
+  // and the following if statements make it sure.
+  // Those ops that fail the second following if-conditions are fetched from the icache and still need to be decoded,
+  // so they are not ready yet.
+
+  // Q: What if `UOC_IC_SWITCH_FRAG_DISABLE` is on?
+  // A: When `UOC_IC_SWITCH_FRAG_DISABLE` is on,
+  // we are allowed to fetch from both **decode stage** and **the uop cache source**,
+  // where the **the uop cache source** is either the *uop queue* or the *icache stage data* when the uop queue is empty.
+  // Still, when the **the uop cache source** is the *icache stage data*,
+  // the ops that can be consumed are required to be fetched from the uop cache.
+  // `UOC_IC_SWITCH_FRAG_DISABLE` being on does not change this fact.
+
   if (src_is_icache) {
     if (op && !op->fetched_from_uop_cache) {
       return FALSE;
