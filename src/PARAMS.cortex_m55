@@ -1,11 +1,9 @@
-# File         : PARAMS.cortex_a76
-# Date         : 04/07/24
-# Description  : Cortex A76 Configuration
+# File         : PARAMS.cortex_m55
+# Date         : 04/09/24
+# Description  : Cortex M55 Configuration
 # 
-# Based on documentation found here:
-# https://en.wikichip.org/wiki/arm_holdings/microarchitectures/cortex-a76
-# https://www.anandtech.com/show/12785/arm-cortex-a76-cpu-unveiled-7nm-powerhouse/2
-# https://developer.arm.com/documentation/PJDOC-466751330-7215/11-0/?lang=en
+# For details:
+# https://gist.github.com/kofyou/40c0cf255ca08bedb210279c0c8ef52d
 
 ## Simulation Parameters
 --mode                          full
@@ -14,8 +12,8 @@
 
 ## Core Parameters
 
-# Femptoseconds, 2.4Ghz, used for energy estimates.
---chip_cycle_time               416667
+# Femptoseconds, 276Mhz, used for energy estimates.
+--chip_cycle_time               3623188
 
 
 ### Fetch Stage
@@ -31,9 +29,9 @@
 
 #### ICache
 --icache_size                   65536
---icache_assoc                  4
+--icache_assoc                  2
 --icache_line_size              64
---icache_latency                3
+--icache_latency                1
 
 ### Uop Cache
 --uop_cache_enable              0
@@ -75,43 +73,45 @@
 --tc_assoc                      4
 
 ### Decode Stage
---decode_cycles                 2
+--decode_cycles                 1
 
 
 ### Map Stage
---map_cycles                    3
+--map_cycles                    1
 
 
 ### Issue Stage
 
 # Max number of instructions to be fetched, decoded, renamed, and issued per cycle.
---issue_width                   5
+--issue_width                   1
 
---rs_fill_width                 8
---rs_sizes                      120
+--rs_fill_width                 2
+--rs_sizes                      3
 --rs_connections                0
---fu_types                      b0000000000000000000000000010000000000000000000000000000111 b0000000000000000000000000000000000100000000001110010111011 b0000000000000000000000000000000000100000000001110010111011 b0000000000000000000000000000011111100000000001111110111011 b1111110011111110111111011101111111100111111100000000000011 b1111110011011100111111011101111111100100111000000000000011 b0000001100000001000000100000000000011000000010000001000011 b0000001100000001000000100000000000011000000010000001000011
+--fu_types                      b1111111111111111111111111111111111100000000001111110111111 b0000000000000000000000000000000000011000000010000001000011 b0000000000000000000000000000011111100111111100000000000011
 
 ### Exec Stage
 --op_cf_delay                   1
 --op_mov_delay                  1
---op_cmov_delay                 2
+--op_cmov_delay                 1
 --op_lda_delay                  1
---op_imem_delay                 3
+--op_imem_delay                 2
 --op_iadd_delay                 1
 --op_imul_delay                 2
---op_idiv_delay               -10
+--op_idiv_delay                -8
 --op_icmp_delay                 1
 --op_logic_delay                1
 --op_shift_delay                1
---op_fmem_delay                 4
---op_fcvt_delay                 4
+--op_fmem_delay                 2
+--op_fcvt_delay                 2
 --op_fadd_delay                 2
---op_fmul_delay                 3
---op_fma_delay                  4
---op_fdiv_delay               -10
+--op_fmul_delay                 2
+--op_fma_delay                  2
+--op_fdiv_delay               -16
 --op_fcmp_delay                 2
 --op_fcmov_delay                2
+--op_gather_delay               4
+--op_scatter_delay              2
 
 ### DCache
 --dcache_size 	 	        65536
@@ -120,13 +120,13 @@
 --dcache_banks                  1
 --dcache_assoc                  4
 --dcache_line_size              64
---dcache_cycles                 4
+--dcache_cycles                 1
 
 ### Reorder/Retire Stage
 
 # Max number of instructions to be retired per cycle.
---node_ret_width                6
---node_table_size               128
+--node_ret_width                3
+--node_table_size               3
 
 # Do not keep stores in RSVs on cache misses; TODO: confirm what this knob does
 --stores_do_not_block_window    1
@@ -139,25 +139,14 @@
 
 ### Mid-level cache
 
-# Enable use of a midlevel cache between i/d and L1
-# The A76 can be configured with either 128, 256 or 512 KiB of level 2 cache.
---mlc_present                   1
---mlc_size                      524288
---mlc_assoc                     8
---mlc_cycles                    9
---mlc_banks                     2
---mlc_line_size                 64
+# L2
+--mlc_present                   0
 
 
 ### LLC
-# configurable in size ranging from 2 MiB to 4 MiB
---l1_size                       2097152
---l1_banks                      1
---l1_cycles                     28
---l1_assoc                      16
---l1_line_size                  64
---l1_interleave_factor          64
-
+# Use level 3 cache as the TCM
+--perfect_l1                    1
+--l1_cycles                     2
 
 ### prefetcher
 # Kept same as Kaby Lake
