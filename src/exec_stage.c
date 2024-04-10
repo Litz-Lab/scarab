@@ -210,6 +210,7 @@ void update_exec_stage(Stage_Data* src_sd) {
         op->delay_bit   = 1;
         src_sd->ops[ii] = NULL;
         src_sd->op_count--;
+	STAT_EVENT(exec->proc_id, FU_UNAVAILABLE);
       }
       continue;
     }
@@ -219,12 +220,14 @@ void update_exec_stage(Stage_Data* src_sd) {
         exec->sd.ops[ii] = NULL;
         exec->sd.op_count--;
         ASSERT(exec->proc_id, exec->sd.op_count >= 0);
+	STAT_EVENT(exec->proc_id, FU_REPLAY);
       } else {
         // memory stall
         if(op != NULL) {
           op->delay_bit   = 1;
           src_sd->ops[ii] = NULL;
           src_sd->op_count--;
+	  STAT_EVENT(exec->proc_id, FU_MEM_UNAVAILABLE);
         }
         continue;
       }
@@ -234,8 +237,10 @@ void update_exec_stage(Stage_Data* src_sd) {
       ASSERT(exec->proc_id, exec->sd.op_count >= 0);
       exec->sd.ops[ii] = NULL;
     }
-    if(!op)
+    if(!op) {
+      STAT_EVENT(exec->proc_id, FU_STARVED);
       continue;
+    }
     // }}}
 
     // {{{ dependent instruction wakeup
