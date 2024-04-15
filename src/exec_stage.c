@@ -182,7 +182,7 @@ void update_exec_stage(Stage_Data* src_sd) {
   ASSERT(exec->proc_id, exec->sd.op_count <= exec->sd.max_op_count);
   // {{{ phase 1 - success/failure of latching and wake up of dependent ops
   if (!exec_off_path) {
-    if (exec->sd.op_count)
+    if (!exec->sd.op_count)
       STAT_EVENT(exec->proc_id, EXEC_STAGE_STARVED);
     else
       STAT_EVENT(exec->proc_id, EXEC_STAGE_NOT_STARVED);
