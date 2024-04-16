@@ -210,7 +210,11 @@ void update_exec_stage(Stage_Data* src_sd) {
         op->delay_bit   = 1;
         src_sd->ops[ii] = NULL;
         src_sd->op_count--;
-	STAT_EVENT(exec->proc_id, FU_UNAVAILABLE);
+        STAT_EVENT(exec->proc_id, FU_UNAVAILABLE);
+        if (op->table_info->is_simd)
+          STAT_EVENT(exec->proc_id, FU_REJECTED_OP_INV_SIMD + op->table_info->op_type);
+        else
+          STAT_EVENT(exec->proc_id, FU_REJECTED_OP_INV_NOT_SIMD + op->table_info->op_type);
       }
       continue;
     }
@@ -220,14 +224,18 @@ void update_exec_stage(Stage_Data* src_sd) {
         exec->sd.ops[ii] = NULL;
         exec->sd.op_count--;
         ASSERT(exec->proc_id, exec->sd.op_count >= 0);
-	STAT_EVENT(exec->proc_id, FU_REPLAY);
+        STAT_EVENT(exec->proc_id, FU_REPLAY);
       } else {
         // memory stall
         if(op != NULL) {
           op->delay_bit   = 1;
           src_sd->ops[ii] = NULL;
           src_sd->op_count--;
-	  STAT_EVENT(exec->proc_id, FU_MEM_UNAVAILABLE);
+          STAT_EVENT(exec->proc_id, FU_MEM_UNAVAILABLE);
+          if (op->table_info->is_simd)
+            STAT_EVENT(exec->proc_id, FU_REJECTED_OP_INV_SIMD + op->table_info->op_type);
+          else
+            STAT_EVENT(exec->proc_id, FU_REJECTED_OP_INV_NOT_SIMD + op->table_info->op_type);
         }
         continue;
       }
