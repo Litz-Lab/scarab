@@ -178,6 +178,14 @@ void debug_exec_stage() {
 /* exec_cycle: */
 
 void update_exec_stage(Stage_Data* src_sd) {
+  // An array corresponds to src_sd->ops.
+  // For each op, if its target FU is busy, one of the following must happen:
+  // 1. The op is NULL. No op scheduled for this FU.
+  // 2. The op is removed becase the FU is not yet ready.
+  // 3. The op is removed becase of a memory stall.
+  Flag src_op_assrtions[src_sd->max_op_count];
+  memset(src_op_assrtions, FALSE, src_sd->max_op_count);
+
   uns ii;
   ASSERT(exec->proc_id, exec->sd.op_count <= exec->sd.max_op_count);
   // {{{ phase 1 - success/failure of latching and wake up of dependent ops
@@ -202,6 +210,10 @@ void update_exec_stage(Stage_Data* src_sd) {
     int        latency;
     Counter    exec_cycle;
 
+    if (!op) {
+      src_op_assrtions[ii] = TRUE;
+    }
+
     // {{{ rejection/failure to latch cases
     if(cycle_count < fu->avail_cycle) {
       // fu not available, so nullify node stage entry to make
@@ -215,6 +227,7 @@ void update_exec_stage(Stage_Data* src_sd) {
           STAT_EVENT(exec->proc_id, FU_REJECTED_OP_INV_SIMD + op->table_info->op_type);
         else
           STAT_EVENT(exec->proc_id, FU_REJECTED_OP_INV_NOT_SIMD + op->table_info->op_type);
+        src_op_assrtions[ii] = TRUE;
       }
       continue;
     }
@@ -236,6 +249,7 @@ void update_exec_stage(Stage_Data* src_sd) {
             STAT_EVENT(exec->proc_id, FU_REJECTED_OP_INV_SIMD + op->table_info->op_type);
           else
             STAT_EVENT(exec->proc_id, FU_REJECTED_OP_INV_NOT_SIMD + op->table_info->op_type);
+          src_op_assrtions[ii] = TRUE;
         }
         continue;
       }
@@ -308,6 +322,8 @@ void update_exec_stage(Stage_Data* src_sd) {
     UNUSED(exec_cycle);
 
     if(fop) {
+      // For explanations, see top of the function
+      ASSERT(exec->proc_id, src_op_assrtions[ii]);
       // if there is still an op in the fu, the fu is still busy and there is
       // nothing to latch
       ASSERT(exec->proc_id, !op);
