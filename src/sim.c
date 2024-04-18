@@ -799,7 +799,8 @@ void full_sim() {
         if(model->per_core_done_func)
           model->per_core_done_func(proc_id);
         if(FDIP_ENABLE) {
-          print_cl_info(proc_id);
+          if(FDIP_PRINT_CL_INFO)
+            print_cl_info(proc_id);
           INC_STAT_EVENT(proc_id, FDIP_AVG_FTQ_OCCUPANCY_OPS, get_fdip_ftq_occupancy_ops(proc_id));
           INC_STAT_EVENT(proc_id, FDIP_AVG_FTQ_OCCUPANCY, get_fdip_ftq_occupancy(proc_id));
         }
