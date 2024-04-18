@@ -187,6 +187,8 @@ DEF_PARAM(fdip_btb_miss_bp_taken_conf, FDIP_BTB_MISS_BP_TAKEN_CONF, Flag, Flag, 
 DEF_PARAM(fdip_btb_miss_bp_taken_conf_threshold, FDIP_BTB_MISS_BP_TAKEN_CONF_THRESHOLD, int, int, 0, )
 DEF_PARAM(fdip_btb_miss_rate_cycles_threshold, FDIP_BTB_MISS_RATE_CYCLES_THRESHOLD, float, float, 1.0, )
 
+DEF_PARAM(fdip_print_cl_info, FDIP_PRINT_CL_INFO, Flag, Flag, FALSE, )
+
 // For infinite size, set BRANCH_MISPREDICTION_TABLE_SIZE to 0.
 DEF_PARAM(branch_misprediction_table_size, BRANCH_MISPREDICTION_TABLE_SIZE , uns     , uns     , 0    , )
 
