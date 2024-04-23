@@ -1585,6 +1585,7 @@ static Flag mem_complete_l1_access(Mem_Req*         req,
     update_l1_lru = FALSE;
   data = (L1_Data*)cache_access(&L1(req->proc_id)->cache, req->addr, &line_addr,
                                 update_l1_lru);  // access L2
+  req->l1_hit = data ? TRUE : FALSE;
   cache_part_l1_access(req);
   if(FORCE_L1_MISS)
     data = NULL;
@@ -1809,6 +1810,7 @@ static Flag mem_complete_mlc_access(Mem_Req*         req,
     update_mlc_lru = FALSE;
   data = (MLC_Data*)cache_access(&MLC(req->proc_id)->cache, req->addr,
                                  &line_addr, update_mlc_lru);  // access MLC
+  req->mlc_hit = data ? TRUE : FALSE;
 
   if(data || PERFECT_MLC) { /* mlc hit */
     // if exclusive cache, invalidate the line in L2 if there is a done function
@@ -1898,6 +1900,7 @@ static void mem_process_l1_reqs() {
   int      out_queue_insertion_count    = 0;
   int      l1_queue_reserve_entry_count = 0;
 
+  INC_STAT_EVENT(0, L1_QUEUE_OCCUPANCY, mem->l1_queue.entry_count);
   /* Go thru the l1_queue and try to access L1 for each request */
 
   for(ii = 0; ii < mem->l1_queue.entry_count; ii++) {
@@ -1989,6 +1992,7 @@ static void mem_process_mlc_reqs() {
   int      l1_queue_insertion_count      = 0;
   int      mlc_queue_reserve_entry_count = 0;
 
+  INC_STAT_EVENT(0, MLC_QUEUE_OCCUPANCY, mem->l1_queue.entry_count);
   /* Go thru the mlc_queue and try to access MLC for each request */
 
   for(ii = 0; ii < mem->mlc_queue.entry_count; ii++) {
@@ -3517,6 +3521,7 @@ static void mem_init_new_req(
   new_req->state              = to_mlc ? MRS_MLC_NEW : MRS_L1_NEW;
   new_req->type               = type;
   new_req->types              = 0;
+  new_req->emitted_cycle      = cycle_count;
   if (type == MRT_IFETCH) {
     new_req->demand_icache_emitted_cycle   = cycle_count;
     new_req->fdip_emitted_cycle      = 0;
@@ -3560,9 +3565,11 @@ static void mem_init_new_req(
   new_req->op_count             = 0;
   new_req->req_count            = 1;
   new_req->done_func            = done_func;
+  new_req->mlc_hit              = FALSE;
   new_req->mlc_miss             = FALSE;
   new_req->mlc_miss_satisfied   = FALSE;
   new_req->mlc_miss_cycle       = MAX_CTR;
+  new_req->l1_hit               = FALSE;
   new_req->l1_miss              = FALSE;
   new_req->l1_miss_satisfied    = FALSE;
   new_req->l1_miss_cycle        = MAX_CTR;

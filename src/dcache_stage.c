@@ -608,6 +608,7 @@ Flag dcache_fill_line(Mem_Req* req) {
   /* if it can't get a write port, fail */
   if(!get_write_port(&dc->ports[bank])) {
     cycle_count = old_cycle_count;
+    STAT_EVENT(dc->proc_id, DCACHE_FILL_PORT_UNAVAILABLE_ONPATH + req->off_path);
     return FAILURE;
   }
 
@@ -624,6 +625,8 @@ Flag dcache_fill_line(Mem_Req* req) {
 
     data = (Dcache_Data*)cache_insert(&dc->pref_dcache, dc->proc_id, req->addr,
                                       &line_addr, &repl_line_addr);
+    ASSERT(dc->proc_id, req->emitted_cycle);
+    ASSERT(dc->proc_id, cycle_count >= req->emitted_cycle);
     // mark the data as HW_prefetch if prefetch mark it as
     // fetched_by_offpath if off_path this is done downstairs
   } else {
@@ -681,6 +684,20 @@ Flag dcache_fill_line(Mem_Req* req) {
           (int)(req->addr >> LOG2(DCACHE_LINE_SIZE)), req->op_count,
           (req->op_count ? req->oldest_op_unique_num : -1));
     STAT_EVENT(dc->proc_id, DCACHE_FILL);
+    ASSERT(dc->proc_id, req->emitted_cycle);
+    ASSERT(dc->proc_id, cycle_count >= req->emitted_cycle);
+    ASSERT(dc->proc_id, ((int)req->mlc_hit + (int)req->l1_hit) < 2); 
+    INC_STAT_EVENT(dc->proc_id, DATA_LD_CYCLES_ONPATH + req->off_path, cycle_count - req->emitted_cycle);
+    if (req->mlc_hit) {
+      STAT_EVENT(dc->proc_id, DATA_LD_MLC_ACCESSES_ONPATH + req->off_path);
+      INC_STAT_EVENT(dc->proc_id, DATA_LD_MLC_CYCLES_ONPATH + req->off_path, cycle_count - req->emitted_cycle);
+    } else if (req->l1_hit) {
+      STAT_EVENT(dc->proc_id, DATA_LD_L1_ACCESSES_ONPATH + req->off_path);
+      INC_STAT_EVENT(dc->proc_id, DATA_LD_L1_CYCLES_ONPATH + req->off_path, cycle_count - req->emitted_cycle);
+    } else {
+      STAT_EVENT(dc->proc_id, DATA_LD_MEM_ACCESSES_ONPATH + req->off_path);
+      INC_STAT_EVENT(dc->proc_id, DATA_LD_MEM_CYCLES_ONPATH + req->off_path, cycle_count - req->emitted_cycle);
+    }
   }
 
   /* set up dcache line fields */

@@ -110,6 +110,7 @@ struct Mem_Req_struct {
   Counter                  fdip_emitted_cycle; /* cycle when the request is emitted. */
   uns64                    ghist;
   Counter                  demand_icache_emitted_cycle; /* cycle when the request is emitted. */
+  Counter                  emitted_cycle; /* cycle when request of any type was first initialized */
   struct Mem_Queue_struct* queue;    /* Pointer to the queue this entry is in */
   Counter                  priority; /* priority of the miss */
   Addr                     addr;     /* address to fetch */
@@ -139,10 +140,12 @@ struct Mem_Req_struct {
   Flag (*done_func)(struct Mem_Req_struct*); /* pointer to function to call when
                                                 the memory request is finished
                                               */
+  Flag mlc_hit;                              /* did this request hit in MLC */
   Flag mlc_miss;                             /* did this request miss in MLC */
   Flag mlc_miss_satisfied;   /* did this request miss in MLC and it is already
                                 satisfied? */
   Counter mlc_miss_cycle;    /* cycle when this req missed in MLC */
+  Flag    l1_hit;            /* did this request hit in L1? */
   Flag    l1_miss;           /* did this request miss in L1? */
   Flag    l1_miss_satisfied; /* did this request miss in L1 and it is already
                                 satisfied? */
