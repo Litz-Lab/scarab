@@ -100,18 +100,19 @@ void init_packet_build(Pb_Data* pb_data, Packet_Build_Identifier pb_ident) {
                                              OP_FMA_BIT);
           pb_data->fu_info[PB_FU_F].max++;
         } else if(!strcmp(buf, "MI")) {
-          pb_data->fu_info[PB_FU_MI].type |= (OP_IMEM_BIT);
+          pb_data->fu_info[PB_FU_MI].type |= (OP_ILD_BIT | OP_IST_BIT);
           pb_data->fu_info[PB_FU_MI].max++;
         } else if(!strcmp(buf, "MF")) {
-          pb_data->fu_info[PB_FU_MF].type |= (OP_FMEM_BIT);
+          pb_data->fu_info[PB_FU_MF].type |= (OP_FLD_BIT | OP_FST_BIT);
           pb_data->fu_info[PB_FU_MF].max++;
         } else if(!strcmp(buf, "M")) {
-          pb_data->fu_info[PB_FU_M].type |= (OP_IMEM_BIT | OP_FMEM_BIT |
+          pb_data->fu_info[PB_FU_M].type |= (OP_ILD_BIT | OP_IST_BIT |
+                                             OP_FLD_BIT | OP_FST_BIT |
                                              OP_GATHER_BIT | OP_SCATTER_BIT);
           pb_data->fu_info[PB_FU_M].max++;
         } else if(!strcmp(buf, "RB")) {
-          pb_data->fu_info[PB_FU_RB].type |= (OP_IADD_BIT | OP_IMEM_BIT |
-                                              OP_FMEM_BIT | OP_GATHER_BIT |
+          pb_data->fu_info[PB_FU_RB].type |= (OP_IADD_BIT | OP_ILD_BIT | OP_IST_BIT |
+                                              OP_FLD_BIT | OP_FST_BIT | OP_GATHER_BIT |
                                               OP_SCATTER_BIT |  // OP_CF_BIT |
                                               OP_CMOV_BIT | OP_ICMP_BIT |
                                               OP_LDA_BIT);
@@ -119,7 +120,7 @@ void init_packet_build(Pb_Data* pb_data, Packet_Build_Identifier pb_ident) {
         } else if(!strcmp(buf, "INRB")) {
           pb_data->fu_info[PB_FU_INRB].type |= N_BIT_MASK(NUM_OP_TYPES);
           pb_data->fu_info[PB_FU_INRB].type &= ~(
-            OP_IADD_BIT | OP_IMEM_BIT | OP_FMEM_BIT |  // OP_CF_BIT |
+            OP_IADD_BIT | OP_ILD_BIT | OP_IST_BIT | OP_FLD_BIT | OP_FST_BIT | // OP_CF_BIT |
             OP_CMOV_BIT | OP_ICMP_BIT | OP_LDA_BIT | OP_FMUL_BIT | OP_FDIV_BIT |
             OP_FCVT_BIT | OP_FADD_BIT | OP_FCMP_BIT | OP_FCMOV_BIT);
           pb_data->fu_info[PB_FU_INRB].max++;

@@ -39,7 +39,7 @@
 // Uop cache is byte-addressable, so tag/set index are generated from full address (no offset)
 // Uop cache uses icache tag + icache offset as full TAG
 #define UOP_CACHE_LINE_SIZE       ICACHE_LINE_SIZE
-#define UOP_QUEUE_SIZE            1000 // at least UOP_CACHE_ASSOC * UOP_CACHE_MAX_UOPS_LINE
+#define UOP_QUEUE_SIZE            1000 // at least UOP_CACHE_ASSOC * ISSUE_WIDTH
 #define UOP_CACHE_LINE_DATA_SIZE  sizeof(Uop_Cache_Data)
 #define UOP_CACHE_NAME            "UOP_CACHE"
 
@@ -73,7 +73,7 @@ Flag uop_cache_insert_enable = TRUE;
 
 void init_uop_cache(uns8 pid) {
   proc_id = pid;
-  UOP_CACHE_ON = UOP_CACHE_ENABLE && (UOP_CACHE_UOP_CAPACITY || INF_SIZE_UOP_CACHE || ORACLE_PERFECT_UOP_CACHE);
+  UOP_CACHE_ON = UOP_CACHE_ENABLE && (UOP_CACHE_LINES || INF_SIZE_UOP_CACHE || ORACLE_PERFECT_UOP_CACHE);
   if (!UOP_CACHE_ON) {
     return;
   }
@@ -82,8 +82,7 @@ void init_uop_cache(uns8 pid) {
   }
 
   // The cache library computes the number of entries from cache_size_bytes/cache_line_size_bytes,
-  uns uop_cache_lines = UOP_CACHE_UOP_CAPACITY / UOP_CACHE_MAX_UOPS_LINE;
-  cpp_cache_create(UOP_CACHE_NAME, uop_cache_lines, UOP_CACHE_ASSOC, UOP_CACHE_LINE_SIZE,
+  cpp_cache_create(UOP_CACHE_NAME, UOP_CACHE_LINES, UOP_CACHE_ASSOC, UOP_CACHE_LINE_SIZE,
                    UOP_CACHE_REPL, /*tag_incl_offset=*/TRUE, UOP_CACHE_LINE_DATA_SIZE);
 }
 
@@ -97,8 +96,8 @@ Flag pw_insert(Uop_Cache_Data pw) {
   if (evicted_pws == NULL)
     evicted_pws = (Addr*)calloc(UOP_CACHE_ASSOC, sizeof(Addr));
 
-  int lines_needed = pw.n_uops / UOP_CACHE_MAX_UOPS_LINE;
-  if (pw.n_uops % UOP_CACHE_MAX_UOPS_LINE) lines_needed++;
+  int lines_needed = pw.n_uops / ISSUE_WIDTH;
+  if (pw.n_uops % ISSUE_WIDTH) lines_needed++;
   ASSERT(0, lines_needed > 0);
 
   if (UOP_CACHE_INSERT_ONLY_ONPATH && pw.first_op_offpath) {
@@ -147,8 +146,8 @@ Flag insert_uop_cache() {
   Flag success = FALSE;
   Flag new_entry;
 
-  int lines_needed = accumulating_pw.n_uops / UOP_CACHE_MAX_UOPS_LINE;
-  if (accumulating_pw.n_uops % UOP_CACHE_MAX_UOPS_LINE) lines_needed++;
+  int lines_needed = accumulating_pw.n_uops / ISSUE_WIDTH;
+  if (accumulating_pw.n_uops % ISSUE_WIDTH) lines_needed++;
 
   if (INF_SIZE_UOP_CACHE || (INF_SIZE_UOP_CACHE_PW_SIZE_LIM 
       && accumulating_pw.n_uops <= INF_SIZE_UOP_CACHE_PW_SIZE_LIM)) {

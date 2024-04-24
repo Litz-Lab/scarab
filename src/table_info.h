@@ -48,7 +48,8 @@
     elem(MOV)   /* move*/                                             \
     elem(CMOV)  /* conditional move*/                                 \
     elem(LDA)   /* load address*/                                     \
-    elem(IMEM)  /* int memory instruction*/                           \
+    elem(ILD)  /* int memory load instruction*/                       \
+    elem(IST)  /* int memory store instruction*/                      \
     elem(IADD)  /* integer add*/                                      \
     elem(IMUL)  /* integer multiply*/                                 \
     elem(IDIV)  /* integer divide*/                                   \
@@ -57,7 +58,8 @@
     elem(SHIFT) /* shift*/                                            \
                                                                       \
     /* fmem reads one int reg and writes a fp reg*/                   \
-    elem(FMEM) /* fp memory instruction*/                             \
+    elem(FLD) /* fp memory load instruction*/                         \
+    elem(FST) /* fp memory store instruction*/                        \
                                                                       \
     /* everything below here is floating point regs only*/            \
     elem(FCVT)  /* floating point convert*/                           \

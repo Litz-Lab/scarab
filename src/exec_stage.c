@@ -453,9 +453,9 @@ void exec_stage_inc_power_stats(Op* op) {
 
   STAT_EVENT(op->proc_id, POWER_OP);
 
-  if(op->table_info->op_type > OP_NOP && op->table_info->op_type < OP_FMEM) {
+  if(op->table_info->op_type > OP_NOP && op->table_info->op_type < OP_FLD) {
     STAT_EVENT(op->proc_id, POWER_INT_OP);
-  } else if(op->table_info->op_type >= OP_FMEM) {
+  } else if(op->table_info->op_type >= OP_FLD) {
     STAT_EVENT(op->proc_id, POWER_FP_OP);
   }
 
@@ -469,7 +469,7 @@ void exec_stage_inc_power_stats(Op* op) {
   if(!op->off_path) {
     STAT_EVENT(op->proc_id, POWER_COMMITTED_OP);
 
-    if(op->table_info->op_type > OP_NOP && op->table_info->op_type < OP_FMEM) {
+    if(op->table_info->op_type > OP_NOP && op->table_info->op_type < OP_FLD) {
       STAT_EVENT(op->proc_id, POWER_COMMITTED_INT_OP);
     } else {
       STAT_EVENT(op->proc_id, POWER_COMMITTED_FP_OP);

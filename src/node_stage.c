@@ -1084,8 +1084,8 @@ Flag is_node_table_full() {
 
 void collect_node_table_full_stats(Op* op) {
   if(!(op->state == OS_DONE || OP_DONE(op))) {
-    if(op->table_info->op_type == OP_IMEM ||
-       op->table_info->op_type == OP_FMEM) {
+    if(op->table_info->op_type == OP_ILD || op->table_info->op_type == OP_IST ||
+       op->table_info->op_type == OP_FLD || op->table_info->op_type == OP_FST) {
       STAT_EVENT(node->proc_id, FULL_WINDOW_MEM_OP);
     } else if(op->table_info->op_type >= OP_FCVT &&
               op->table_info->op_type <= OP_FCMOV) {

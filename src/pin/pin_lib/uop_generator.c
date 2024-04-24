@@ -680,7 +680,7 @@ static uns generate_uops(uns8 proc_id, ctype_pin_inst* pi,
     clear_t_uop(uop);
 
     uop->mem_type     = (pi->is_prefetch) ? MEM_PF : MEM_LD;
-    uop->op_type      = (pi->is_fp || pi->is_simd) ? OP_FMEM : OP_IMEM;
+    uop->op_type      = (pi->is_fp || pi->is_simd) ? OP_FLD : OP_ILD;
     uop->mem_size     = pi->ld_size;
     uop->load_seq_num = i;
 
@@ -758,7 +758,7 @@ static uns generate_uops(uns8 proc_id, ctype_pin_inst* pi,
       clear_t_uop(uop);
 
       uop->mem_type      = MEM_ST;
-      uop->op_type       = (pi->is_fp || pi->is_simd) ? OP_FMEM : OP_IMEM;
+      uop->op_type       = (pi->is_fp || pi->is_simd) ? OP_FST : OP_IST;
       uop->mem_size      = pi->st_size;
       uop->store_seq_num = i;
 

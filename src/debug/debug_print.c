@@ -373,8 +373,8 @@ void print_func_op(Op* op) {
   char opcode[MAX_STR_LENGTH + 1];
   if(op->table_info->op_type == OP_CF) {
     sprintf(opcode, "%s", cf_type_names[op->table_info->cf_type]);
-  } else if(op->table_info->op_type == OP_IMEM ||
-            op->table_info->op_type == OP_FMEM) {
+  } else if(op->table_info->op_type == OP_ILD || op->table_info->op_type == OP_IST ||
+            op->table_info->op_type == OP_FLD || op->table_info->op_type == OP_FST) {
     sprintf(opcode, "%s", mem_type_names[op->table_info->mem_type]);
   } else {
     sprintf(opcode, "%s", Op_Type_str(op->table_info->op_type));
@@ -450,8 +450,8 @@ char* disasm_op(Op* op, Flag wide) {
   const char* opcode;
   if(op->table_info->op_type == OP_CF) {
     opcode = cf_type_names[op->table_info->cf_type];
-  } else if(op->table_info->op_type == OP_IMEM ||
-            op->table_info->op_type == OP_FMEM) {
+  } else if(op->table_info->op_type == OP_ILD || op->table_info->op_type == OP_IST ||
+            op->table_info->op_type == OP_FLD || op->table_info->op_type == OP_FST) {
     opcode = mem_type_names[op->table_info->mem_type];
   } else {
     opcode = Op_Type_str(op->table_info->op_type);
