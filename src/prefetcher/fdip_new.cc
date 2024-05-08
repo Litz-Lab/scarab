@@ -579,8 +579,8 @@ void update_fdip() {
   per_core_fdip_ftq_occupancy_ops[ic_ref->proc_id] += decoupled_fe_ftq_iter_offset(iter);
   INC_STAT_EVENT(fdip_proc_id, FDIP_FTQ_OCCUPANCY_OPS_ACCUMULATED, decoupled_fe_ftq_iter_offset(iter));
   if (break_reason == BR_REACH_FTQ_END) {
-    per_core_fdip_ftq_occupancy_blocks[ic_ref->proc_id] += decoupled_fe_ftq_num_blocks();
-    INC_STAT_EVENT(fdip_proc_id, FDIP_FTQ_OCCUPANCY_BLOCKS_ACCUMULATED, decoupled_fe_ftq_num_blocks());
+    per_core_fdip_ftq_occupancy_blocks[ic_ref->proc_id] += decoupled_fe_ftq_num_fts();
+    INC_STAT_EVENT(fdip_proc_id, FDIP_FTQ_OCCUPANCY_BLOCKS_ACCUMULATED, decoupled_fe_ftq_num_fts());
   }
   per_core_last_break_reason[ic_ref->proc_id] = break_reason;
 }
@@ -1040,13 +1040,17 @@ void probe_prefetched_cls(Addr line_addr) {
   auto cl_iter = per_core_prefetched_cls_info[fdip_proc_id].find(line_addr);
   if (cl_iter != per_core_prefetched_cls_info[fdip_proc_id].end())
     cl_iter->second.first.first = cycle_count;
-  else {
-    auto cl_off_iter = per_core_off_fetched_cls[fdip_proc_id].find(line_addr);
-    if (!FDIP_PERFECT_PREFETCH && !EIP_ENABLE && !DJOLT_ENABLE && !FNLMMA_ENABLE) {
-      if (!FDIP_BP_CONFIDENCE || FDIP_BP_PERFECT_CONFIDENCE)
-        ASSERT(fdip_proc_id, cl_off_iter != per_core_off_fetched_cls[fdip_proc_id].end());
-    }
-  }
+
+  // The following assertion could fail if FDIP breaks due to full mem req buffer and
+  // a line is then brought into the icache by an icache miss
+
+  // else {
+  //   auto cl_off_iter = per_core_off_fetched_cls[fdip_proc_id].find(line_addr);
+  //   if (!FDIP_PERFECT_PREFETCH && !EIP_ENABLE && !DJOLT_ENABLE && !FNLMMA_ENABLE) {
+  //     if (!FDIP_BP_CONFIDENCE || FDIP_BP_PERFECT_CONFIDENCE)
+  //       ASSERT(fdip_proc_id, cl_off_iter != per_core_off_fetched_cls[fdip_proc_id].end());
+  //   }
+  // }
 }
 
 void evict_prefetched_cls(uns proc_id, Addr line_addr, Flag by_fdip) {

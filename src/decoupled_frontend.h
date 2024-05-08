@@ -54,7 +54,12 @@ extern "C" {
   typedef struct decoupled_fe_iter decoupled_fe_iter;
   
   struct decoupled_fe_iter {
-    uint64_t pos;
+    // the ft index
+    uint64_t ft_pos;
+    // the op index
+    uint64_t op_pos;
+    // the flattened op index, as if the ftq is an 1-d array
+    uint64_t flattened_op_pos;
   };
 
   // Simulator API
@@ -68,25 +73,30 @@ extern "C" {
   void recover_decoupled_fe(int proc_id);
   void decoupled_fe_stall(Op *op);
   void decoupled_fe_retire(Op *op, int proc_id, uns64 inst_uid);
-  bool decoupled_fe_fetch_op(Op** op, int proc_id);
   bool decoupled_fe_can_fetch_op(int proc_id);
-  uint64_t decoupled_fe_next_fetch_addr(int proc_id);
+  bool decoupled_fe_fetch_op(Op** op, int proc_id);
   void decoupled_fe_return_op(Op *op);
+  bool decoupled_fe_can_fetch_ft(int proc_id);
+  bool decoupled_fe_fetch_ft(Addr* ft_start, Addr* ft_end, int proc_id);
+  uint64_t decoupled_fe_next_fetch_addr(int proc_id);
   // FTQ API
   decoupled_fe_iter* decoupled_fe_new_ftq_iter();
   /* Returns the Op at current iterator position or NULL if FTQ is empty or the end of FTQ was reached
-     if end_of_block is true the Op is the last one in a fetch block (cache-line boundary of taken branch)*/
-  Op* decoupled_fe_ftq_iter_get(decoupled_fe_iter* iter, bool *end_of_block);
+     if end_of_ft is true the Op is the last one in a fetch target (cache-line boundary of taken branch)*/
+  Op* decoupled_fe_ftq_iter_get(decoupled_fe_iter* iter, bool *end_of_ft);
   /* Increments iterator and returns the Op at iterator position or NULL if FTQ is empty or the end of FTQ was reached
-     if end_of_block is true the Op is the last one in a fetch block (cache-line boundary of taken branch)*/
-  Op* decoupled_fe_ftq_iter_get_next(decoupled_fe_iter* iter, bool *end_of_block);
-  /* Returns iter offset from the start of the FTQ, this offset gets incremented
+     if end_of_ft is true the Op is the last one in a fetch target (cache-line boundary of taken branch)*/
+  Op* decoupled_fe_ftq_iter_get_next(decoupled_fe_iter* iter, bool *end_of_ft);
+  /* Returns iter flattened offset from the start of the FTQ, this offset gets incremented
      by advancing the iter and decremented by the icache consuming FTQ entries,
      and reset by flushes */
   uint64_t decoupled_fe_ftq_iter_offset(decoupled_fe_iter* iter);
-  uint64_t decoupled_fe_ftq_size();
+  /* Returns iter ft offset from the start of the FTQ, this offset gets incremented
+     by advancing the iter and decremented by the icache consuming FTQ entries,
+     and reset by flushes */
+  uint64_t decoupled_fe_ftq_iter_ft_offset(decoupled_fe_iter* iter);
   uint64_t decoupled_fe_ftq_num_ops();
-  uint64_t decoupled_fe_ftq_num_blocks();
+  uint64_t decoupled_fe_ftq_num_fts();
 #ifdef __cplusplus
 }
 #endif

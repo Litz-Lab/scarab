@@ -261,7 +261,7 @@ Flag packet_build(Pb_Data* pb_data, Break_Reason* break_fetch, Op* const op) {
 
       // fetch across cache lines
       if(pb_data->pb_ident == PB_ICACHE) {
-        int offset = op->inst_info->addr -
+        int offset = ADDR_PLUS_OFFSET(op->inst_info->addr, op->inst_info->trace_info.inst_size) -
                      ROUND_DOWN(op->inst_info->addr, ICACHE_LINE_SIZE);
         if(offset >= ICACHE_LINE_SIZE && !FETCH_ACROSS_CACHE_LINES) {
           *break_fetch = BREAK_LINE_END;
