@@ -74,12 +74,17 @@ typedef struct Pref_Stride_Struct {
 /*************************************************************/
 /* HWP Interface */
 void pref_stride_init(HWP* hwp);
-void pref_stride_ul1_train(Addr lineAddr, Addr loadPC, Flag ul1_hit);
+void init_stride(HWP* hwp, Pref_Stride* new_stride_hwp);
+void set_pref_stride(Pref_Stride* stride_hwp);
+void pref_stride_ul1_train(Addr lineAddr, Addr loadPC, Flag ul1_hit, Flag is_mlc);
 void pref_stride_ul1_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
                           uns32 global_hist);
 void pref_stride_ul1_hit(uns8 proc_id, Addr lineAddr, Addr loadPC,
                          uns32 global_hist);
-
+void pref_stride_mlc_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                          uns32 global_hist);
+void pref_stride_mlc_hit(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                         uns32 global_hist);
 /*************************************************************/
 /* Misc functions */
 void pref_stride_create_newentry(int idx, Addr line_addr, Addr region_tag);

@@ -82,7 +82,8 @@ static void collect_stream_stats(const Stream_Buffer* stream);
  * ) */
 /* Reference : IBM POWER 4 White paper */
 
-Pref_Stream* pref_stream_core;
+Pref_Stream* pref_stream_core_ul1;
+Pref_Stream* pref_stream_core_mlc;
 Pref_Stream* pref_stream;
 
 void set_pref_stream(Pref_Stream* new_pref_stream) {
@@ -91,7 +92,7 @@ void set_pref_stream(Pref_Stream* new_pref_stream) {
 
 
 void pref_stream_init(HWP* hwp) {
-  uns8 proc_id;
+  // uns8 proc_id;
 
   if(!PREF_STREAM_ON) {
     return;
@@ -103,8 +104,16 @@ void pref_stream_init(HWP* hwp) {
 
   hwp->hwp_info->enabled = TRUE;
 
-  pref_stream_core = (Pref_Stream*)malloc(sizeof(Pref_Stream) * NUM_CORES);
+  pref_stream_core_ul1 = (Pref_Stream*)malloc(sizeof(Pref_Stream) * NUM_CORES);
+  pref_stream_core_mlc = (Pref_Stream*)malloc(sizeof(Pref_Stream) * NUM_CORES);
 
+  init_stream_core(hwp, pref_stream_core_ul1);
+  init_stream_core(hwp, pref_stream_core_mlc);
+
+}
+
+void init_stream_core(HWP* hwp,Pref_Stream* pref_stream_core) {
+  uns8 proc_id;
   for(proc_id = 0; proc_id < NUM_CORES; proc_id++) {
     pref_stream_core[proc_id].hwp_info = hwp->hwp_info;
 
@@ -158,10 +167,11 @@ void pref_stream_init(HWP* hwp) {
         pref_stream_core[0].train_filter_no;
     }
   }
+
 }
 
 void pref_stream_train(uns8 proc_id, Addr line_addr, Addr load_PC,
-                       uns32 global_hist, Flag create) /* line_addr: the first
+                       uns32 global_hist, Flag create, Flag is_mlc) /* line_addr: the first
                                                           address of the cache
                                                           block */
 {
@@ -239,12 +249,17 @@ void pref_stream_train(uns8 proc_id, Addr line_addr, Addr load_PC,
           Addr line_index = stream->ep + stream->dir;
           uns  distance   = stream->dir > 0 ? line_index - stream->sp :
                                            stream->sp - line_index;
-          if(!pref_addto_ul1req_queue_set(
+          if(is_mlc){ if(!pref_addto_umlc_req_queue(
+               proc_id, line_index, pref_stream->hwp_info->id)){
+            return;}}
+          else{
+            if(!pref_addto_ul1req_queue_set(
                proc_id, line_index, pref_stream->hwp_info->id, distance,
-               load_PC, global_hist, stream->buffer_full))
-            return;
-        }
+               load_PC, global_hist, stream->buffer_full)){
+            return;}
+          }
 
+        }
 
         stream->ep  = stream->ep + stream->dir;
         dis         = stream->ep - stream->sp;
@@ -272,18 +287,31 @@ void pref_stream_train(uns8 proc_id, Addr line_addr, Addr load_PC,
 
 void pref_stream_ul1_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
                           uns32 global_hist) {
-  set_pref_stream(&pref_stream_core[proc_id]);
+  set_pref_stream(&pref_stream_core_ul1[proc_id]);
 
-  pref_stream_train(proc_id, lineAddr, loadPC, global_hist, TRUE);
+  pref_stream_train(proc_id, lineAddr, loadPC, global_hist, TRUE, FALSE);
 }
 
 void pref_stream_ul1_hit(uns8 proc_id, Addr lineAddr, Addr loadPC,
                          uns32 global_hist) {
-  set_pref_stream(&pref_stream_core[proc_id]);
+  set_pref_stream(&pref_stream_core_ul1[proc_id]);
 
-  pref_stream_train(proc_id, lineAddr, loadPC, global_hist, FALSE);
+  pref_stream_train(proc_id, lineAddr, loadPC, global_hist, FALSE,FALSE);
 }
 
+void pref_stream_mlc_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                          uns32 global_hist) {
+  set_pref_stream(&pref_stream_core_mlc[proc_id]);
+
+  pref_stream_train(proc_id, lineAddr, loadPC, global_hist, TRUE, TRUE);
+}
+
+void pref_stream_mlc_hit(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                         uns32 global_hist) {
+  set_pref_stream(&pref_stream_core_mlc[proc_id]);
+
+  pref_stream_train(proc_id, lineAddr, loadPC, global_hist, FALSE, TRUE);
+}
 int pref_stream_train_create_stream_buffer(uns8 proc_id, Addr line_addr,
                                            Flag train, Flag create,
                                            int extra_dis) {
@@ -587,7 +615,7 @@ void pref_stream_throttle_stream(int index) {
 }
 
 void pref_stream_per_core_done(uns proc_id) {
-  set_pref_stream(&pref_stream_core[PREF_STREAM_PER_CORE_ENABLE ? proc_id : 0]);
+  set_pref_stream(&pref_stream_core_ul1[PREF_STREAM_PER_CORE_ENABLE ? proc_id : 0]);
 
   for(uns ii = 0; ii < STREAM_BUFFER_N; ii++) {
     Stream_Buffer* stream = &pref_stream->stream[ii];
@@ -617,7 +645,7 @@ void pref_stream_throttle_fb(uns8 proc_id) {
 }
 
 Flag pref_stream_bw_prefetchable(uns proc_id, Addr line_addr) {
-  set_pref_stream(&pref_stream_core[proc_id]);
+  set_pref_stream(&pref_stream_core_ul1[proc_id]);
 
   int idx = pref_stream_train_create_stream_buffer(proc_id, line_addr, FALSE,
                                                    FALSE, 0);

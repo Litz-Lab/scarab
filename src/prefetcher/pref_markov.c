@@ -56,23 +56,38 @@
 /* Macros */
 #define DEBUG(proc_id, args...) _DEBUG(proc_id, DEBUG_PREF_MARKOV, ##args)
 
-Pref_Markov* markov_hwp_core;
+Pref_Markov* markov_hwp_core_ul1;
+Pref_Markov* markov_hwp_core_mlc;
 Pref_Markov* markov_hwp;
 Addr*        last_miss_addr_core;
+Addr*        last_miss_addr_core_ul1;
+Addr*        last_miss_addr_core_mlc;
 
 void set_markov_hwp(Pref_Markov* new_markov_hwp) {
   markov_hwp = new_markov_hwp;
 }
+void set_last_miss_addr(Addr*  new_addr_core) {
+  last_miss_addr_core = new_addr_core;
+}
 
 void pref_markov_init(HWP* hwp) {
-  uns ii, jj, proc_id;
-
   if(!PREF_MARKOV_ON)
     return;
   hwp->hwp_info->enabled = TRUE;
-  markov_hwp_core     = (Pref_Markov*)malloc(sizeof(Pref_Markov) * NUM_CORES);
-  last_miss_addr_core = malloc(sizeof(Addr) * NUM_CORES);
+  markov_hwp_core_ul1     = (Pref_Markov*)malloc(sizeof(Pref_Markov) * NUM_CORES);
+  markov_hwp_core_mlc     = (Pref_Markov*)malloc(sizeof(Pref_Markov) * NUM_CORES);
+  last_miss_addr_core_ul1 = malloc(sizeof(Addr) * NUM_CORES);
+  // last_miss_addr_core = malloc(sizeof(Addr) * NUM_CORES);
+  last_miss_addr_core_mlc = malloc(sizeof(Addr) * NUM_CORES);
+  set_last_miss_addr(last_miss_addr_core_ul1);
+  init_markov(hwp, markov_hwp_core_ul1);
+  set_last_miss_addr(last_miss_addr_core_mlc);
+  init_markov(hwp, markov_hwp_core_mlc);
 
+}
+
+void init_markov(HWP* hwp, Pref_Markov* markov_hwp_core) {
+  uns ii, jj, proc_id;
   for(proc_id = 0; proc_id < NUM_CORES; proc_id++) {
     last_miss_addr_core[proc_id] = 0;
     set_markov_hwp(&markov_hwp_core[proc_id]);
@@ -95,22 +110,46 @@ void pref_markov_init(HWP* hwp) {
 
 void pref_markov_ul1_prefhit(uns8 proc_id, Addr lineAddr, Addr load_PC,
                              uns32 global_hist) {
-  set_markov_hwp(&markov_hwp_core[proc_id]);
+  set_markov_hwp(&markov_hwp_core_ul1[proc_id]);
+  set_last_miss_addr(last_miss_addr_core_ul1);
 
   if(PREF_MARKOV_UPDATE_ON_PREF_HIT) {
     pref_markov_update_table(proc_id, lineAddr, 0);
   }
   if(PREF_MARKOV_SEND_ON_PREF_HIT) {
-    pref_markov_send_prefetches(proc_id, lineAddr);
+    pref_markov_send_prefetches(proc_id, lineAddr, FALSE);
   }
 }
 
 void pref_markov_ul1_miss(uns8 proc_id, Addr lineAddr, Addr load_PC,
                           uns32 global_hist) {
-  set_markov_hwp(&markov_hwp_core[proc_id]);
+  set_markov_hwp(&markov_hwp_core_ul1[proc_id]);
+  set_last_miss_addr(last_miss_addr_core_ul1);
 
   pref_markov_update_table(proc_id, lineAddr, 1);
-  pref_markov_send_prefetches(proc_id, lineAddr);
+  pref_markov_send_prefetches(proc_id, lineAddr, FALSE);
+}
+
+void pref_markov_mlc_prefhit(uns8 proc_id, Addr lineAddr, Addr load_PC,
+                             uns32 global_hist) {
+  set_markov_hwp(&markov_hwp_core_mlc[proc_id]);
+  set_last_miss_addr(last_miss_addr_core_mlc);
+
+  if(PREF_MARKOV_UPDATE_ON_PREF_HIT) {
+    pref_markov_update_table(proc_id, lineAddr, 0);
+  }
+  if(PREF_MARKOV_SEND_ON_PREF_HIT) {
+    pref_markov_send_prefetches(proc_id, lineAddr, TRUE);
+  }
+}
+
+void pref_markov_mlc_miss(uns8 proc_id, Addr lineAddr, Addr load_PC,
+                          uns32 global_hist) {
+  set_markov_hwp(&markov_hwp_core_mlc[proc_id]);
+  set_last_miss_addr(last_miss_addr_core_mlc);
+
+  pref_markov_update_table(proc_id, lineAddr, 1);
+  pref_markov_send_prefetches(proc_id, lineAddr, TRUE);
 }
 
 void pref_markov_update_table(uns8 proc_id, Addr current_addr, Flag true_miss) {
@@ -186,7 +225,7 @@ void pref_markov_update_table(uns8 proc_id, Addr current_addr, Flag true_miss) {
 }
 
 
-void pref_markov_send_prefetches(uns8 proc_id, Addr miss_lineAddr) {
+void pref_markov_send_prefetches(uns8 proc_id, Addr miss_lineAddr, Flag is_mlc) {
   unsigned ii          = 0;
   unsigned table_index = (miss_lineAddr >> LOG2(L1_LINE_SIZE)) %
                          PREF_MARKOV_NUM_ENTRIES;
@@ -196,7 +235,12 @@ void pref_markov_send_prefetches(uns8 proc_id, Addr miss_lineAddr) {
       if((markov_hwp->markov_table[table_index][ii].tag == miss_lineAddr) &&
          (markov_hwp->markov_table[table_index][ii].count >
           PREF_MARKOV_SEND_THRESHOLD)) {
-        pref_addto_ul1req_queue(
+        if(is_mlc)pref_addto_umlc_req_queue(
+          proc_id,
+          markov_hwp->markov_table[table_index][ii].next_addr >>
+            LOG2(L1_LINE_SIZE),
+          markov_hwp->hwp_info->id);
+        else pref_addto_ul1req_queue(
           proc_id,
           markov_hwp->markov_table[table_index][ii].next_addr >>
             LOG2(L1_LINE_SIZE),

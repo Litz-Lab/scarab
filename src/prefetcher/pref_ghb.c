@@ -63,7 +63,8 @@
 /* Macros */
 #define DEBUG(proc_id, args...) _DEBUG(proc_id, DEBUG_PREF_GHB, ##args)
 
-Pref_GHB* ghb_hwp_core;
+Pref_GHB* ghb_hwp_core_ul1;
+Pref_GHB* ghb_hwp_core_mlc;
 Pref_GHB* ghb_hwp;
 
 void set_pref_ghb(Pref_GHB* new_ghb_hwp) {
@@ -72,13 +73,20 @@ void set_pref_ghb(Pref_GHB* new_ghb_hwp) {
 
 
 void pref_ghb_init(HWP* hwp) {
-  int  ii;
-  uns8 proc_id;
 
   if(!PREF_GHB_ON)
     return;
-  ghb_hwp_core = (Pref_GHB*)malloc(sizeof(Pref_GHB) * NUM_CORES);
+  ghb_hwp_core_ul1 = (Pref_GHB*)malloc(sizeof(Pref_GHB) * NUM_CORES);
+  ghb_hwp_core_mlc = (Pref_GHB*)malloc(sizeof(Pref_GHB) * NUM_CORES);
 
+  init_ghb_core(hwp, ghb_hwp_core_ul1);
+  init_ghb_core(hwp, ghb_hwp_core_mlc);
+
+}
+
+void init_ghb_core(HWP* hwp,Pref_GHB* ghb_hwp_core) {
+  int  ii;
+  uns8 proc_id;
   for(proc_id = 0; proc_id < NUM_CORES; proc_id++) {
     ghb_hwp_core[proc_id].hwp_info          = hwp->hwp_info;
     ghb_hwp_core[proc_id].hwp_info->enabled = TRUE;
@@ -113,20 +121,33 @@ void pref_ghb_init(HWP* hwp) {
   }
 }
 
+
 void pref_ghb_ul1_prefhit(uns8 proc_id, Addr lineAddr, Addr loadPC,
                           uns32 global_hist) {
-  set_pref_ghb(&ghb_hwp_core[proc_id]);
-  pref_ghb_ul1_train(proc_id, lineAddr, loadPC, TRUE);
+  set_pref_ghb(&ghb_hwp_core_ul1[proc_id]);
+  pref_ghb_ul1_train(proc_id, lineAddr, loadPC, TRUE, FALSE);
 }
 
 void pref_ghb_ul1_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
                        uns32 global_hist) {
-  set_pref_ghb(&ghb_hwp_core[proc_id]);
-  pref_ghb_ul1_train(proc_id, lineAddr, loadPC, FALSE);
+  set_pref_ghb(&ghb_hwp_core_ul1[proc_id]);
+  pref_ghb_ul1_train(proc_id, lineAddr, loadPC, FALSE, FALSE);
+}
+
+void pref_ghb_mlc_prefhit(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                          uns32 global_hist) {
+  set_pref_ghb(&ghb_hwp_core_mlc[proc_id]);
+  pref_ghb_ul1_train(proc_id, lineAddr, loadPC, TRUE, TRUE);
+}
+
+void pref_ghb_mlc_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                       uns32 global_hist) {
+  set_pref_ghb(&ghb_hwp_core_mlc[proc_id]);
+  pref_ghb_ul1_train(proc_id, lineAddr, loadPC, FALSE, TRUE);
 }
 
 void pref_ghb_ul1_train(uns8 proc_id, Addr lineAddr, Addr loadPC,
-                        Flag ul1_hit) {
+                        Flag ul1_hit, Flag is_mlc) {
   // 1. adds address to ghb
   // 2. sends upto "degree" prefetches to the prefQ
   int ii;
@@ -213,7 +234,9 @@ void pref_ghb_ul1_train(uns8 proc_id, Addr lineAddr, Addr loadPC,
           lineIndex += delta1;
           ASSERT(proc_id,
                  proc_id == (lineIndex >> (58 - LOG2(DCACHE_LINE_SIZE))));
-          pref_addto_ul1req_queue_set(proc_id, lineIndex, ghb_hwp->hwp_info->id,
+          if(is_mlc)pref_addto_umlc_req_queue(
+               proc_id, lineIndex, ghb_hwp->hwp_info->id);
+          else pref_addto_ul1req_queue_set(proc_id, lineIndex, ghb_hwp->hwp_info->id,
                                       0, loadPC, 0, FALSE);  // FIXME
         }
       } else {
@@ -228,9 +251,10 @@ void pref_ghb_ul1_train(uns8 proc_id, Addr lineAddr, Addr loadPC,
             lineIndex += ghb_hwp->delta_buffer[deltab_idx];
             ASSERT(proc_id,
                    proc_id == (lineIndex >> (58 - LOG2(DCACHE_LINE_SIZE))));
-            pref_addto_ul1req_queue_set(proc_id, lineIndex,
-                                        ghb_hwp->hwp_info->id, 0, loadPC, 0,
-                                        FALSE);  // FIXME
+            if(is_mlc)pref_addto_umlc_req_queue(
+               proc_id, lineIndex, ghb_hwp->hwp_info->id);
+            else pref_addto_ul1req_queue_set(proc_id, lineIndex, ghb_hwp->hwp_info->id,
+                                      0, loadPC, 0, FALSE);  // FIXME
             DEBUG(0, "Sent %llx\n", lineIndex);
             deltab_idx = CIRC_DEC(deltab_idx, ghb_hwp->deltab_size);
             if(deltab_idx > curr_deltab_size) {

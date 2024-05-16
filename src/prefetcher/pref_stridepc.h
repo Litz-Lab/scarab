@@ -54,12 +54,17 @@ typedef struct Pref_StridePC_Struct {
 /* HWP Interface */
 void set_pref_stridepc(Pref_StridePC* new_stridepc);
 void pref_stridepc_init(HWP* hwp);
+void init_stridepc(HWP* hwp, Pref_StridePC* stridepc_hwp_core);
 void pref_stridepc_ul1_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
                             uns32 global_hist);
 void pref_stridepc_ul1_hit(uns8 proc_id, Addr lineAddr, Addr loadPC,
                            uns32 global_hist);
+void pref_stridepc_mlc_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                            uns32 global_hist);
+void pref_stridepc_mlc_hit(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                           uns32 global_hist);
 void pref_stridepc_ul1_train(uns8 proc_id, Addr lineAddr, Addr loadPC,
-                             Flag ul1_hit);
+                             Flag ul1_hit, Flag is_mlc);
 
 
 /*************************************************************/

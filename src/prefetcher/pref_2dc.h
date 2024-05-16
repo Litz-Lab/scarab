@@ -57,12 +57,17 @@ typedef struct Pref_2DC_Struct {
 /*************************************************************/
 /* HWP Interface */
 void pref_2dc_init(HWP* hwp);
-void pref_2dc_ul1_train(Addr lineAddr, Addr loadPC, Flag ul1_hit);
+void set_pref_2dc(Pref_2DC* new_tdc_hwp);
+void init_2dc(HWP* hwp, Pref_2DC* tdc_hwp_core);
+void pref_2dc_ul1_train(Addr lineAddr, Addr loadPC, Flag ul1_hit, Flag is_mlc);
 void pref_2dc_ul1_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
                        uns32 global_hist);
 void pref_2dc_ul1_prefhit(uns8 proc_id, Addr lineAddr, Addr loadPC,
                           uns32 global_hist);
-
+void pref_2dc_mlc_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                       uns32 global_hist);
+void pref_2dc_mlc_prefhit(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                          uns32 global_hist);
 /*************************************************************/
 /* Misc functions */
 void pref_2dc_throttle(void);

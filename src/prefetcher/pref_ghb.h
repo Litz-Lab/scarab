@@ -69,11 +69,17 @@ typedef struct Pref_GHB_Struct {
 /* HWP Interface */
 void set_pref_ghb(Pref_GHB* new_ghb_hwp);
 void pref_ghb_init(HWP* hwp);
-void pref_ghb_ul1_train(uns8 proc_id, Addr lineAddr, Addr loadPC, Flag ul1_hit);
+void init_ghb_core(HWP* hwp,Pref_GHB* ghb_hwp_core);
+void pref_ghb_ul1_train(uns8 proc_id, Addr lineAddr, Addr loadPC, Flag ul1_hit, Flag is_mlc);
 void pref_ghb_ul1_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
                        uns32 global_hist);
 void pref_ghb_ul1_prefhit(uns8 proc_id, Addr lineAddr, Addr loadPC,
                           uns32 global_hist);
+void pref_ghb_mlc_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                       uns32 global_hist);
+void pref_ghb_mlc_prefhit(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                          uns32 global_hist);
+
 
 /*************************************************************/
 /* Misc functions */

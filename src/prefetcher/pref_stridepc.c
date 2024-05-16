@@ -57,7 +57,8 @@
 #define DEBUG(args...) _DEBUG(DEBUG_PREF_STRIDEPC, ##args)
 
 Pref_StridePC* stridepc_hwp;
-Pref_StridePC* stridepc_hwp_core;
+Pref_StridePC* stridepc_hwp_core_ul1;
+Pref_StridePC* stridepc_hwp_core_mlc;
 
 void set_pref_stridepc(Pref_StridePC* new_stridepc) {
   stridepc_hwp = new_stridepc;
@@ -65,13 +66,22 @@ void set_pref_stridepc(Pref_StridePC* new_stridepc) {
 
 
 void pref_stridepc_init(HWP* hwp) {
-  uns8 proc_id;
 
   if(!PREF_STRIDEPC_ON)
     return;
   hwp->hwp_info->enabled = TRUE;
 
-  stridepc_hwp_core = (Pref_StridePC*)malloc(sizeof(Pref_StridePC) * NUM_CORES);
+  stridepc_hwp_core_ul1 = (Pref_StridePC*)malloc(sizeof(Pref_StridePC) * NUM_CORES);
+  stridepc_hwp_core_mlc = (Pref_StridePC*)malloc(sizeof(Pref_StridePC) * NUM_CORES);
+
+  init_stridepc(hwp, stridepc_hwp_core_ul1);
+  init_stridepc(hwp, stridepc_hwp_core_mlc);
+
+
+}
+
+void init_stridepc(HWP* hwp, Pref_StridePC* stridepc_hwp_core) {
+  uns8 proc_id;
 
   for(proc_id = 0; proc_id < NUM_CORES; proc_id++) {
     stridepc_hwp_core[proc_id].hwp_info     = hwp->hwp_info;
@@ -82,18 +92,30 @@ void pref_stridepc_init(HWP* hwp) {
 
 void pref_stridepc_ul1_hit(uns8 proc_id, Addr lineAddr, Addr loadPC,
                            uns32 global_hist) {
-  set_pref_stridepc(&stridepc_hwp_core[proc_id]);
-  pref_stridepc_ul1_train(proc_id, lineAddr, loadPC, TRUE);
+  set_pref_stridepc(&stridepc_hwp_core_ul1[proc_id]);
+  pref_stridepc_ul1_train(proc_id, lineAddr, loadPC, TRUE, FALSE);
 }
 
 void pref_stridepc_ul1_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
                             uns32 global_hist) {
-  set_pref_stridepc(&stridepc_hwp_core[proc_id]);
-  pref_stridepc_ul1_train(proc_id, lineAddr, loadPC, FALSE);
+  set_pref_stridepc(&stridepc_hwp_core_ul1[proc_id]);
+  pref_stridepc_ul1_train(proc_id, lineAddr, loadPC, FALSE, FALSE);
+}
+
+void pref_stridepc_mlc_hit(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                           uns32 global_hist) {
+  set_pref_stridepc(&stridepc_hwp_core_mlc[proc_id]);
+  pref_stridepc_ul1_train(proc_id, lineAddr, loadPC, TRUE, TRUE);
+}
+
+void pref_stridepc_mlc_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                            uns32 global_hist) {
+  set_pref_stridepc(&stridepc_hwp_core_mlc[proc_id]);
+  pref_stridepc_ul1_train(proc_id, lineAddr, loadPC, FALSE, TRUE);
 }
 
 void pref_stridepc_ul1_train(uns8 proc_id, Addr lineAddr, Addr loadPC,
-                             Flag ul1_hit) {
+                             Flag ul1_hit, Flag is_mlc) {
   int ii;
   int idx = -1;
 
@@ -182,12 +204,21 @@ void pref_stridepc_ul1_train(uns8 proc_id, Addr lineAddr, Addr loadPC,
         ASSERT(proc_id,
                proc_id == (pref_index >> (58 - LOG2(DCACHE_LINE_SIZE))));
 
-        if(!pref_addto_ul1req_queue(proc_id,
-                                    (PREF_STRIDEPC_USELOADADDR ?
-                                       (pref_index >> LOG2(DCACHE_LINE_SIZE)) :
-                                       pref_index),
-                                    stridepc_hwp->hwp_info->id))  // FIXME
-          break;                                                  // q is full
+          if(is_mlc){ if(!pref_addto_umlc_req_queue(proc_id,
+                (PREF_STRIDEPC_USELOADADDR ?
+                (pref_index >> LOG2(DCACHE_LINE_SIZE)) :
+                    pref_index),
+              stridepc_hwp->hwp_info->id)){
+            break;}}
+          else{
+            if(!pref_addto_ul1req_queue(proc_id,
+                (PREF_STRIDEPC_USELOADADDR ?
+                (pref_index >> LOG2(DCACHE_LINE_SIZE)) :
+                    pref_index),
+              stridepc_hwp->hwp_info->id))  // FIXME
+          break;   }
+
+                                               // q is full
         entry->pref_last_index = pref_index;
       }
     } else {

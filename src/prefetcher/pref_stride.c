@@ -60,7 +60,11 @@
 #define DEBUG(args...) _DEBUG(DEBUG_PREF_STRIDE, ##args)
 
 Pref_Stride* stride_hwp;
-
+Pref_Stride* stride_hwp_ul1;
+Pref_Stride* stride_hwp_mlc;
+void set_pref_stride(Pref_Stride* stride_hwp) {
+  stride_hwp = stride_hwp;
+}
 void pref_stride_init(HWP* hwp) {
   if(!PREF_STRIDE_ON)
     return;
@@ -68,7 +72,12 @@ void pref_stride_init(HWP* hwp) {
   ASSERTM(0, PREF_REPORT_PREF_MATCH_AS_HIT || PREF_REPORT_PREF_MATCH_AS_MISS,
           "Stride prefetcher must train on demands matching prefetch request "
           "buffers\n");
+  init_stride(hwp, stride_hwp_ul1);
+  init_stride(hwp, stride_hwp_mlc);
 
+}
+void init_stride(HWP* hwp, Pref_Stride* new_stride_hwp){
+  set_pref_stride(new_stride_hwp);
   stride_hwp               = (Pref_Stride*)malloc(sizeof(Pref_Stride));
   stride_hwp->hwp_info     = hwp->hwp_info;
   hwp->hwp_info->enabled   = TRUE;
@@ -77,18 +86,29 @@ void pref_stride_init(HWP* hwp) {
   stride_hwp->index_table = (Stride_Index_Table_Entry*)calloc(
     PREF_STRIDE_TABLE_N, sizeof(Stride_Index_Table_Entry));
 }
-
 void pref_stride_ul1_hit(uns8 proc_id, Addr lineAddr, Addr loadPC,
                          uns32 global_hist) {
-  pref_stride_ul1_train(lineAddr, loadPC, TRUE);
+  set_pref_stride(stride_hwp_ul1);
+  pref_stride_ul1_train(lineAddr, loadPC, TRUE,  FALSE);
 }
 
 void pref_stride_ul1_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
                           uns32 global_hist) {
-  pref_stride_ul1_train(lineAddr, loadPC, FALSE);
+  set_pref_stride(stride_hwp_ul1);
+  pref_stride_ul1_train(lineAddr, loadPC, FALSE, FALSE);
+}
+void pref_stride_mlc_hit(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                         uns32 global_hist) {
+  set_pref_stride(stride_hwp_mlc);
+  pref_stride_ul1_train(lineAddr, loadPC, TRUE, TRUE);
 }
 
-void pref_stride_ul1_train(Addr lineAddr, Addr loadPC, Flag ul1_hit) {
+void pref_stride_mlc_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                          uns32 global_hist) {
+  set_pref_stride(stride_hwp_mlc);
+  pref_stride_ul1_train(lineAddr, loadPC, FALSE, TRUE);
+}
+void pref_stride_ul1_train(Addr lineAddr, Addr loadPC, Flag ul1_hit, Flag is_mlc) {
   int ii;
   int region_idx = -1;
 
@@ -218,9 +238,12 @@ void pref_stride_ul1_train(Addr lineAddr, Addr loadPC, Flag ul1_hit) {
           (ii < PREF_STRIDE_DEGREE && entry->pref_sent < PREF_STRIDE_DISTANCE);
           ii++, entry->pref_sent++) {
         pref_index = entry->pref_last_index + entry->stride[0];
-        if(!pref_addto_ul1req_queue(0, pref_index,
-                                    stride_hwp->hwp_info->id))  // FIXME
-          break;                                                // q is full
+        if(is_mlc){if(!pref_addto_umlc_req_queue(0, pref_index,
+                                      stride_hwp->hwp_info->id))  // FIXME
+            break;}
+          else {if(!pref_addto_ul1req_queue(0, pref_index,
+                                      stride_hwp->hwp_info->id))  // FIXME
+            break;  }                                                 // q is full
         entry->pref_last_index = pref_index;
       }
     } else if((stride == entry->stride[entry->curr_state] &&
@@ -241,17 +264,23 @@ void pref_stride_ul1_train(Addr lineAddr, Addr loadPC, Flag ul1_hit) {
         if(entry->pref_count == entry->s_cnt[entry->pref_curr_state]) {
           pref_index = entry->pref_last_index +
                        entry->strans[entry->pref_curr_state];
-          if(!pref_addto_ul1req_queue(0, pref_index,
+          if(is_mlc){if(!pref_addto_umlc_req_queue(0, pref_index,
                                       stride_hwp->hwp_info->id))  // FIXME
-            break;                                                // q is full
+            break;}
+          else {if(!pref_addto_ul1req_queue(0, pref_index,
+                                      stride_hwp->hwp_info->id))  // FIXME
+            break;  }                                              // q is full
           entry->pref_count      = 0;
           entry->pref_curr_state = (1 - entry->pref_curr_state);
         } else {
           pref_index = entry->pref_last_index +
                        entry->stride[entry->pref_curr_state];
-          if(!pref_addto_ul1req_queue(0, pref_index,
+          if(is_mlc){if(!pref_addto_umlc_req_queue(0, pref_index,
                                       stride_hwp->hwp_info->id))  // FIXME
-            break;                                                // q is full
+            break;}
+          else {if(!pref_addto_ul1req_queue(0, pref_index,
+                                      stride_hwp->hwp_info->id))  // FIXME
+            break;  }                                                 // q is full
           entry->pref_count++;
         }
         entry->pref_last_index = pref_index;

@@ -70,12 +70,24 @@
 #define DEBUG(args...) _DEBUG(DEBUG_PREF_2DC, ##args)
 
 Pref_2DC* tdc_hwp;
+Pref_2DC* tdc_hwp_mlc;
+Pref_2DC* tdc_hwp_ul1;
+void set_pref_2dc(Pref_2DC* new_tdc_hwp) {
+  tdc_hwp = new_tdc_hwp;
+}
 
 void pref_2dc_init(HWP* hwp) {
   if(!PREF_2DC_ON)
     return;
+  tdc_hwp_ul1                    = (Pref_2DC*)malloc(sizeof(Pref_2DC));
+  tdc_hwp_mlc                    = (Pref_2DC*)malloc(sizeof(Pref_2DC));
+  init_2dc(hwp, tdc_hwp_ul1);
+  init_2dc(hwp, tdc_hwp_mlc);
+}
+void init_2dc(HWP* hwp, Pref_2DC* tdc_hwp_core){
+  set_pref_2dc(tdc_hwp_core);
 
-  tdc_hwp                    = (Pref_2DC*)malloc(sizeof(Pref_2DC));
+  
   tdc_hwp->hwp_info          = hwp->hwp_info;
   tdc_hwp->hwp_info->enabled = TRUE;
 
@@ -93,18 +105,30 @@ void pref_2dc_init(HWP* hwp) {
   tdc_hwp->hash_func        = PREF_2DC_HASH_FUNC_DEFAULT;
   tdc_hwp->pref_degree      = PREF_2DC_DEGREE;
 }
-
 void pref_2dc_ul1_prefhit(uns8 proc_id, Addr lineAddr, Addr loadPC,
                           uns32 global_hist) {
-  pref_2dc_ul1_train(lineAddr, loadPC, TRUE);  // FIXME
+  set_pref_2dc(tdc_hwp_ul1);
+  pref_2dc_ul1_train(lineAddr, loadPC, TRUE, FALSE);  // FIXME
 }
 
 void pref_2dc_ul1_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
                        uns32 global_histC) {
-  pref_2dc_ul1_train(lineAddr, loadPC, FALSE);  // FIXME
+  set_pref_2dc(tdc_hwp_ul1);
+  pref_2dc_ul1_train(lineAddr, loadPC, FALSE, FALSE);  // FIXME
+}
+void pref_2dc_mlc_prefhit(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                          uns32 global_hist) {
+  set_pref_2dc(tdc_hwp_mlc);
+  pref_2dc_ul1_train(lineAddr, loadPC, TRUE, TRUE);  // FIXME
 }
 
-void pref_2dc_ul1_train(Addr lineAddr, Addr loadPC, Flag ul1_hit) {
+void pref_2dc_mlc_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                       uns32 global_histC) {
+  set_pref_2dc(tdc_hwp_mlc);
+  pref_2dc_ul1_train(lineAddr, loadPC, FALSE, TRUE);  // FIXME
+}
+
+void pref_2dc_ul1_train(Addr lineAddr, Addr loadPC, Flag ul1_hit, Flag is_mlc) {
   int              delta;
   Addr             hash;
   Addr             lineIndex = lineAddr >> LOG2(DCACHE_LINE_SIZE);
@@ -161,7 +185,8 @@ void pref_2dc_ul1_train(Addr lineAddr, Addr loadPC, Flag ul1_hit) {
       // few.
       for(; num_pref_sent < tdc_hwp->pref_degree; num_pref_sent++) {
         lineIndex += region->deltaA;
-        pref_addto_ul1req_queue_set(0, lineIndex, tdc_hwp->hwp_info->id, 0,
+        if(is_mlc)pref_addto_umlc_req_queue(0, lineIndex, tdc_hwp->hwp_info->id);
+        else pref_addto_ul1req_queue_set(0, lineIndex, tdc_hwp->hwp_info->id, 0,
                                     loadPC, 0, FALSE);  // FIXME
       }
     }
@@ -176,8 +201,9 @@ void pref_2dc_ul1_train(Addr lineAddr, Addr loadPC, Flag ul1_hit) {
       delta1 = delta2;
       delta2 = data->delta;
 
-      pref_addto_ul1req_queue_set(0, lineIndex, tdc_hwp->hwp_info->id, 0,
-                                  loadPC, 0, FALSE);  // FIXME
+      if(is_mlc)pref_addto_umlc_req_queue(0, lineIndex, tdc_hwp->hwp_info->id);
+      else pref_addto_ul1req_queue_set(0, lineIndex, tdc_hwp->hwp_info->id, 0,
+                                    loadPC, 0, FALSE);  // FIXME
       num_pref_sent++;
     }
   }

@@ -45,13 +45,19 @@ typedef struct Pref_Markov_Struct {
 /*************************************************************/
 /* HWP Interface */
 void set_markov_hwp(Pref_Markov* new_markov_hwp);
+void set_last_miss_addr(Addr*  new_addr_core);
 void pref_markov_init(HWP* hwp);
+void init_markov(HWP* hwp, Pref_Markov* markov_hwp_core);
 void pref_markov_ul1_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
                           uns32 global_hist);
 void pref_markov_ul1_prefhit(uns8 proc_id, Addr lineAddr, Addr loadPC,
                              uns32 global_hist);
+void pref_markov_mlc_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                          uns32 global_hist);
+void pref_markov_mlc_prefhit(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                             uns32 global_hist);
 void pref_markov_update_table(uns8 proc_id, Addr current_addr, Flag true_miss);
-void pref_markov_send_prefetches(uns8 proc_id, Addr miss_lineAddr);
+void pref_markov_send_prefetches(uns8 proc_id, Addr miss_lineAddr, Flag is_mlc);
 /*************************************************************/
 
 #endif /*  __PREF_MARKOV_H__*/

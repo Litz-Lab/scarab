@@ -83,13 +83,20 @@ typedef struct Pref_Stream_struct {
 void set_pref_stream(Pref_Stream*);
 
 void pref_stream_init(HWP* hwp);
+void init_stream_core(HWP* hwp,Pref_Stream* pref_stream_core);
 void pref_stream_per_core_done(uns proc_id);
 
 void pref_stream_ul1_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
                           uns32 global_hist);
 void pref_stream_ul1_hit(uns8 proc_id, Addr lineAddr, Addr loadPC,
                          uns32 global_hist);
+void pref_stream_mlc_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                          uns32 global_hist);
+void pref_stream_mlc_hit(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                         uns32 global_hist);
 void pref_stream_train(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                       uns32 global_hist, Flag create, Flag is_mlc);
+void pref_stream_train_mlc(uns8 proc_id, Addr lineAddr, Addr loadPC,
                        uns32 global_hist, Flag create);
 
 int  pref_stream_train_create_stream_buffer(uns8 proc_id, Addr line_index,
