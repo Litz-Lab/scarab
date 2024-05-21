@@ -360,7 +360,8 @@ void update_fdip() {
     per_core_cnt_btb_miss[fdip_proc_id] = 0;
   }
 
-  for (Op *op = decoupled_fe_ftq_iter_get(iter, &end_of_block); op != NULL; op = decoupled_fe_ftq_iter_get_next(iter, &end_of_block), ops_per_cycle++) {
+  Op *op = NULL;
+  for (op = decoupled_fe_ftq_iter_get(iter, &end_of_block); op != NULL; op = decoupled_fe_ftq_iter_get_next(iter, &end_of_block), ops_per_cycle++) {
     //set previous op, only if on path or first off path instruction
     if(FDIP_BP_CONFIDENCE &&
         per_core_cur_op[fdip_proc_id] &&
@@ -374,24 +375,8 @@ void update_fdip() {
     per_core_cur_op[fdip_proc_id] = op;
     Addr last_line_addr = per_core_last_line_addr[fdip_proc_id];
     Flag emit_new_prefetch = FALSE;
-    bool block_break = FETCH_BREAK_ON_TAKEN && !FETCH_ACROSS_CACHE_LINES;
-    if (!op) {
-      if (!decoupled_fe_ftq_iter_offset(iter)) {
-        DEBUG(fdip_proc_id, "Break due to FTQ Empty\n");
-        break_reason = BR_FTQ_EMPTY;
-      } else {
-        break_reason = BR_REACH_FTQ_END;
-        DEBUG(fdip_proc_id, "Break due to reaching FTQ end\n");
-      }
-      break;
-    }
-    if (block_break && ftq_entry_per_cycle == MAX_FTQ_ENTRY_CYC) {
-      DEBUG(fdip_proc_id, "Break due to max FTQ entries per cycle (block break enable)\n");
-      break_reason = BR_MAX_FTQ_ENTRY_CYC;
-      break;
-    }
-    if (!block_break && ftq_entry_per_cycle >= MAX_FTQ_ENTRY_CYC && ops_per_cycle >= std::max(UC_ISSUE_WIDTH, IC_ISSUE_WIDTH)) {
-      DEBUG(fdip_proc_id, "Break due to max FTQ entries per cycle (block break disable)\n");
+    if (ftq_entry_per_cycle >= MAX_FTQ_ENTRY_CYC && ops_per_cycle >= std::max(UC_ISSUE_WIDTH, IC_ISSUE_WIDTH)) {
+      DEBUG(fdip_proc_id, "Break due to max FTQ entries per cycle\n");
       break_reason = BR_MAX_FTQ_ENTRY_CYC;
       break;
     }
@@ -436,7 +421,7 @@ void update_fdip() {
     DEBUG(fdip_proc_id, "op_num: %llu, op->inst_info->addr: %llx, line_addr: %llx, last_line_addr: %llx, off-path: %d\n", op->op_num, op->inst_info->addr, line_addr, last_line_addr, fdip_off_path(fdip_proc_id));
     if (line_addr != last_line_addr) {
       STAT_EVENT(ic_ref->proc_id, FDIP_ATTEMPTED_PREF_ONPATH + op->off_path);
-      DEBUG(fdip_proc_id, "fdip off path: %d, conf off path: %d\n", fdip_off_path(fdip_proc_id), (per_core_low_confidence_cnt[fdip_proc_id] < FDIP_OFF_PATH_THRESHOLD) ? 0:1);
+      DEBUG(fdip_proc_id, "fdip off path: %d, conf off path: %d\n", fdip_off_path(fdip_proc_id), fdip_conf_off_path(fdip_proc_id));
       if (FDIP_BP_CONFIDENCE)
         log_stats_bp_conf();
       if (FDIP_UTILITY_HASH_ENABLE || FDIP_UC_SIZE || FDIP_BLOOM_FILTER || FDIP_PERFECT_PREFETCH)
@@ -489,12 +474,16 @@ void update_fdip() {
         insert_pref_candidate_to_seniority_ftq(line_addr);
       if (FDIP_UTILITY_HASH_ENABLE || FDIP_UC_SIZE || FDIP_BLOOM_FILTER)
         INC_STAT_EVENT(fdip_proc_id, FDIP_SENIORITY_FTQ_ACCUMULATED, per_core_seniority_ftq[fdip_proc_id].size());
+      Flag mem_req_buf_full = FALSE;
       if (emit_new_prefetch && !line && !mem_req && !mem_can_allocate_req_buffer(fdip_proc_id, mem_type, FALSE)) {
-        // This rarely happens if mem_req_buffer_entries and ramulator_readq_entries are big enough.
-        // e.g. If FE_FTQ_BLOCK_NUM = 302, MEM_REQ_BUFFER_ENTRIES = 1024 and RAMULATOR_READQ_ENTRIES = 512 never cause this break.
-        DEBUG(fdip_proc_id, "Break due to full mem_req buf\n");
-        break_reason = BR_FULL_MEM_REQ_BUF;
-        break;
+        mem_req_buf_full = TRUE;
+        // should keep running ahead without breaking the loop by failing to emit a prefetch when FTQ has only one FT where the backend fetches the FT soon
+        // freeze FDIP when mem_req buffer hits the limit. This should rarely happends if mem_req_buffer_entries and ramulator_readq_entries are big enough.
+        if (FDIP_FREEZE_AT_MEM_BUF_LIMIT && decoupled_fe_ftq_num_fts() != 1) {
+          DEBUG(fdip_proc_id, "Break due to full mem_req buf\n");
+          break_reason = BR_FULL_MEM_REQ_BUF;
+          break;
+        }
       }
 
       if (emit_new_prefetch)
@@ -530,7 +519,6 @@ void update_fdip() {
               ICACHE_LINE_SIZE, 0, NULL, instr_fill_line, unique_count, 0);
               //ICACHE_LINE_SIZE, 0, NULL, instr_fill_line, unique_count++, 0); // bug?
           // A buffer entry should be available since it is checked by mem_can_allocate_req_buffer for a new prefetch
-          ASSERT(fdip_proc_id, success);
           if (success == Mem_Queue_Req_Result::SUCCESS_NEW) {
             STAT_EVENT(ic_ref->proc_id, FDIP_NEW_PREFETCHES_ONPATH + op->off_path);
             DEBUG(fdip_proc_id, "Success to emit a new prefetch for %llx\n", line_addr);
@@ -540,6 +528,10 @@ void update_fdip() {
           } else if (success == Mem_Queue_Req_Result::SUCCESS_MERGED) {
             STAT_EVENT(ic_ref->proc_id, FDIP_PREF_MSHR_PROBE_HIT_ONPATH + op->off_path);
             DEBUG(fdip_proc_id, "Success to merge a prefetch for %llx\n", line_addr);
+          } else if (success == Mem_Queue_Req_Result::FAILED) {
+            ASSERT(ic_ref->proc_id, mem_req_buf_full);
+            STAT_EVENT(ic_ref->proc_id, FDIP_PREF_FAILED_ONPATH + op->off_path);
+            DEBUG(fdip_proc_id, "Failed to emit a prefetch for %llx\n", line_addr);
           }
         }
         if (FDIP_BP_CONFIDENCE)
@@ -555,8 +547,18 @@ void update_fdip() {
       DEBUG(fdip_proc_id, "End of block - ftq_entry_per_cycle: %d\n", ftq_entry_per_cycle);
     }
   }
+  if (!op) {
+    if (!decoupled_fe_ftq_iter_ft_offset(iter)) {
+      DEBUG(fdip_proc_id, "Break due to FTQ Empty\n");
+      break_reason = BR_FTQ_EMPTY;
+    } else {
+      break_reason = BR_REACH_FTQ_END;
+      DEBUG(fdip_proc_id, "Break due to reaching FTQ end\n");
+    }
+  }
+
   STAT_EVENT(ic_ref->proc_id, FDIP_BREAK_REACH_FTQ_END + break_reason);
-  DEBUG(fdip_proc_id, "FTQ size : %lu, FDIP prefetch offset : %lu\n", decoupled_fe_ftq_num_ops(), decoupled_fe_ftq_iter_offset(iter));
+  DEBUG(fdip_proc_id, "FTQ size : %lu, FDIP prefetch FT offset : %lu\n", decoupled_fe_ftq_num_fts(), decoupled_fe_ftq_iter_ft_offset(iter));
   if (FDIP_ADJUSTABLE_FTQ && cycle_count % FDIP_ADJUSTABLE_FTQ_CYC == 0) {
     if (per_core_utility_timeliness_info[ic_ref->proc_id].unuseful_prefetches) {
       per_core_utility_timeliness_info[ic_ref->proc_id].utility_ratio = (double)per_core_utility_timeliness_info[ic_ref->proc_id].useful_prefetches/((double)per_core_utility_timeliness_info[ic_ref->proc_id].useful_prefetches+(double)per_core_utility_timeliness_info[ic_ref->proc_id].unuseful_prefetches);
@@ -579,7 +581,7 @@ void update_fdip() {
   per_core_fdip_ftq_occupancy_ops[ic_ref->proc_id] += decoupled_fe_ftq_iter_offset(iter);
   INC_STAT_EVENT(fdip_proc_id, FDIP_FTQ_OCCUPANCY_OPS_ACCUMULATED, decoupled_fe_ftq_iter_offset(iter));
   if (break_reason == BR_REACH_FTQ_END) {
-    per_core_fdip_ftq_occupancy_blocks[ic_ref->proc_id] += decoupled_fe_ftq_num_fts();
+    per_core_fdip_ftq_occupancy_blocks[ic_ref->proc_id] += decoupled_fe_ftq_iter_ft_offset(iter);
     INC_STAT_EVENT(fdip_proc_id, FDIP_FTQ_OCCUPANCY_BLOCKS_ACCUMULATED, decoupled_fe_ftq_num_fts());
   }
   per_core_last_break_reason[ic_ref->proc_id] = break_reason;
@@ -940,6 +942,8 @@ void inc_icache_miss(uns proc_id, Addr line_addr) {
 }
 
 void inc_prefetched_cls(Addr line_addr, uns success) {
+  if (success == Mem_Queue_Req_Result::FAILED)
+    return;
   Flag on_path = FALSE;
   if (FDIP_BP_CONFIDENCE && per_core_low_confidence_cnt[fdip_proc_id] < FDIP_OFF_PATH_THRESHOLD)
     on_path = TRUE;
@@ -1040,17 +1044,6 @@ void probe_prefetched_cls(Addr line_addr) {
   auto cl_iter = per_core_prefetched_cls_info[fdip_proc_id].find(line_addr);
   if (cl_iter != per_core_prefetched_cls_info[fdip_proc_id].end())
     cl_iter->second.first.first = cycle_count;
-
-  // The following assertion could fail if FDIP breaks due to full mem req buffer and
-  // a line is then brought into the icache by an icache miss
-
-  // else {
-  //   auto cl_off_iter = per_core_off_fetched_cls[fdip_proc_id].find(line_addr);
-  //   if (!FDIP_PERFECT_PREFETCH && !EIP_ENABLE && !DJOLT_ENABLE && !FNLMMA_ENABLE) {
-  //     if (!FDIP_BP_CONFIDENCE || FDIP_BP_PERFECT_CONFIDENCE)
-  //       ASSERT(fdip_proc_id, cl_off_iter != per_core_off_fetched_cls[fdip_proc_id].end());
-  //   }
-  // }
 }
 
 void evict_prefetched_cls(uns proc_id, Addr line_addr, Flag by_fdip) {

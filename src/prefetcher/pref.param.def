@@ -173,6 +173,7 @@ DEF_PARAM(uftq_min_ftq_block_num, UFTQ_MIN_FTQ_BLOCK_NUM, uns, uns, 4, )
 DEF_PARAM(uftq_max_ftq_block_num, UFTQ_MAX_FTQ_BLOCK_NUM, uns, uns, 64, )
 DEF_PARAM(fdip_seniority_ftq_hold_cyc, FDIP_SENIORITY_FTQ_HOLD_CYC, uns, uns, 30000, )
 DEF_PARAM(fdip_perfect_prefetch, FDIP_PERFECT_PREFETCH, Flag, Flag, FALSE, )
+DEF_PARAM(fdip_freeze_at_mem_buf_limit, FDIP_FREEZE_AT_MEM_BUF_LIMIT, Flag, Flag, TRUE, )
 
 DEF_PARAM(fdip_dual_path_pref_ic_enable , FDIP_DUAL_PATH_PREF_IC_ENABLE    , Flag    , Flag    , FALSE, )
 DEF_PARAM(fdip_dual_path_pref_uoc_enable , FDIP_DUAL_PATH_PREF_UOC_ENABLE  , Flag    , Flag    , FALSE, ) //uop cache

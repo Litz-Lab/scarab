@@ -440,11 +440,6 @@ bool decoupled_fe_fetch_ft(Addr* ft_start, Addr* ft_length, int proc_id) {
     per_core_ftq[proc_id].pop_front();
 
     for (auto it = per_core_ftq_iterators[proc_id].begin(); it != per_core_ftq_iterators[proc_id].end(); it++) {
-      if (FDIP_BP_CONFIDENCE && it->ft_pos == 0 && it->op_pos == 0) {
-        ASSERT(proc_id, it->flattened_op_pos == 0);
-        fdip_set_cur_op(proc_id, ft->ops.front());
-      }
-
       // When the icache consumes an FT decrement the iter's offset so it points to the same entry as before
       if (it->ft_pos > 0) {
         ASSERT(proc_id, it->flattened_op_pos >= ft->ops.size());
