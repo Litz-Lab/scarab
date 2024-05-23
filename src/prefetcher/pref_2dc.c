@@ -64,47 +64,71 @@
    come up with a hash function that works. Use this to access the
    cache.
 */
-
+/*
+ * This prefetcher is implemented in a unified way where all cores share the same prefetcher instance.
+ * As a result, the proc_id received as a parameter is ignored.
+ */
 /**************************************************************************************/
 /* Macros */
 #define DEBUG(args...) _DEBUG(DEBUG_PREF_2DC, ##args)
 
-Pref_2DC* tdc_hwp;
+tdc_prefetchers tdc_prefetcher_array;
 
 void pref_2dc_init(HWP* hwp) {
   if(!PREF_2DC_ON)
     return;
 
-  tdc_hwp                    = (Pref_2DC*)malloc(sizeof(Pref_2DC));
-  tdc_hwp->hwp_info          = hwp->hwp_info;
-  tdc_hwp->hwp_info->enabled = TRUE;
+  if(PREF_UMLC_ON){
+    tdc_prefetcher_array.tdc_hwp_umlc        = (Pref_2DC*)malloc(sizeof(Pref_2DC));
+    tdc_prefetcher_array.tdc_hwp_umlc->type  = UMLC;
+    init_2dc(hwp, tdc_prefetcher_array.tdc_hwp_umlc);
+  }
+  if(PREF_UL1_ON){
+    tdc_prefetcher_array.tdc_hwp_ul1         = (Pref_2DC*)malloc(sizeof(Pref_2DC));
+    tdc_prefetcher_array.tdc_hwp_ul1->type  = UL1;
+    init_2dc(hwp, tdc_prefetcher_array.tdc_hwp_ul1);
+  }
 
-  tdc_hwp->regions = (Pref_2DC_Region*)calloc(PREF_2DC_NUM_REGIONS,
+}
+void init_2dc(HWP* hwp, Pref_2DC* tdc_hwp_core){
+
+  tdc_hwp_core->hwp_info          = hwp->hwp_info;
+  tdc_hwp_core->hwp_info->enabled = TRUE;
+
+  tdc_hwp_core->regions = (Pref_2DC_Region*)calloc(PREF_2DC_NUM_REGIONS,
                                               sizeof(Pref_2DC_Region));
 
-  tdc_hwp->last_access = 0;
-  tdc_hwp->last_loadPC = 0;
+  tdc_hwp_core->last_access = 0;
+  tdc_hwp_core->last_loadPC = 0;
 
-  init_cache(&tdc_hwp->cache, "PREF_2DC_CACHE", PREF_2DC_CACHE_SIZE,
+  init_cache(&tdc_hwp_core->cache, "PREF_2DC_CACHE", PREF_2DC_CACHE_SIZE,
              PREF_2DC_CACHE_ASSOC, PREF_2DC_CACHE_LINE_SIZE,
              sizeof(Pref_2DC_Cache_Data), REPL_TRUE_LRU);
 
-  tdc_hwp->cache_index_bits = LOG2(PREF_2DC_CACHE_SIZE / 4);
-  tdc_hwp->hash_func        = PREF_2DC_HASH_FUNC_DEFAULT;
-  tdc_hwp->pref_degree      = PREF_2DC_DEGREE;
+  tdc_hwp_core->cache_index_bits = LOG2(PREF_2DC_CACHE_SIZE / 4);
+  tdc_hwp_core->hash_func        = PREF_2DC_HASH_FUNC_DEFAULT;
+  tdc_hwp_core->pref_degree      = PREF_2DC_DEGREE;
 }
-
 void pref_2dc_ul1_prefhit(uns8 proc_id, Addr lineAddr, Addr loadPC,
                           uns32 global_hist) {
-  pref_2dc_ul1_train(lineAddr, loadPC, TRUE);  // FIXME
+  pref_2dc_train(tdc_prefetcher_array.tdc_hwp_ul1, lineAddr, loadPC, TRUE);  // FIXME
 }
 
 void pref_2dc_ul1_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
                        uns32 global_histC) {
-  pref_2dc_ul1_train(lineAddr, loadPC, FALSE);  // FIXME
+  pref_2dc_train(tdc_prefetcher_array.tdc_hwp_ul1, lineAddr, loadPC, FALSE);  // FIXME
+}
+void pref_2dc_umlc_prefhit(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                          uns32 global_hist) {
+  pref_2dc_train(tdc_prefetcher_array.tdc_hwp_umlc, lineAddr, loadPC, TRUE);  // FIXME
 }
 
-void pref_2dc_ul1_train(Addr lineAddr, Addr loadPC, Flag ul1_hit) {
+void pref_2dc_umlc_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                       uns32 global_histC) {
+  pref_2dc_train(tdc_prefetcher_array.tdc_hwp_umlc, lineAddr, loadPC, FALSE);  // FIXME
+}
+
+void pref_2dc_train(Pref_2DC* tdc_hwp, Addr lineAddr, Addr loadPC, Flag is_hit) {
   int              delta;
   Addr             hash;
   Addr             lineIndex = lineAddr >> LOG2(DCACHE_LINE_SIZE);
@@ -123,13 +147,13 @@ void pref_2dc_ul1_train(Addr lineAddr, Addr loadPC, Flag ul1_hit) {
     // delta then dont insert.
     if(region->deltaA != 0 && region->deltaB != 0 &&
        (!(region->deltaA == region->deltaB && region->deltaB == delta))) {
-      hash = pref_2dc_hash(tdc_hwp->last_access, tdc_hwp->last_loadPC,
+      hash = pref_2dc_hash(tdc_hwp, tdc_hwp->last_access, tdc_hwp->last_loadPC,
                            region->deltaA, region->deltaB);
       Pref_2DC_Cache_Data* data = cache_access(&tdc_hwp->cache, hash,
                                                &dummy_lineaddr, TRUE);
       if(!data) {
         Addr repl_addr;
-        if(!ul1_hit) {  // insert only on miss
+        if(!is_hit) {  // insert only on miss
           data = cache_insert(&tdc_hwp->cache, 0, hash, &dummy_lineaddr,
                               &repl_addr);
         } else {
@@ -161,12 +185,13 @@ void pref_2dc_ul1_train(Addr lineAddr, Addr loadPC, Flag ul1_hit) {
       // few.
       for(; num_pref_sent < tdc_hwp->pref_degree; num_pref_sent++) {
         lineIndex += region->deltaA;
-        pref_addto_ul1req_queue_set(0, lineIndex, tdc_hwp->hwp_info->id, 0,
+        if(tdc_hwp->type == UMLC)pref_addto_umlc_req_queue(0, lineIndex, tdc_hwp->hwp_info->id);
+        else pref_addto_ul1req_queue_set(0, lineIndex, tdc_hwp->hwp_info->id, 0,
                                     loadPC, 0, FALSE);  // FIXME
       }
     }
     while(num_pref_sent < tdc_hwp->pref_degree) {
-      hash = pref_2dc_hash(lineIndex, loadPC, delta1, delta2);
+      hash = pref_2dc_hash(tdc_hwp, lineIndex, loadPC, delta1, delta2);
       data = cache_access(&tdc_hwp->cache, hash, &dummy_lineaddr, TRUE);
       if(!data) {  // no hit for this hash
         return;
@@ -176,14 +201,15 @@ void pref_2dc_ul1_train(Addr lineAddr, Addr loadPC, Flag ul1_hit) {
       delta1 = delta2;
       delta2 = data->delta;
 
-      pref_addto_ul1req_queue_set(0, lineIndex, tdc_hwp->hwp_info->id, 0,
-                                  loadPC, 0, FALSE);  // FIXME
+      if(tdc_hwp->type == UMLC)pref_addto_umlc_req_queue(0, lineIndex, tdc_hwp->hwp_info->id);
+      else pref_addto_ul1req_queue_set(0, lineIndex, tdc_hwp->hwp_info->id, 0,
+                                    loadPC, 0, FALSE);  // FIXME
       num_pref_sent++;
     }
   }
 }
 
-void pref_2dc_throttle(void) {
+void pref_2dc_throttle(Pref_2DC* tdc_hwp) {
   int dyn_shift = 0;
 
   float acc = pref_get_accuracy(0, tdc_hwp->hwp_info->id);
@@ -247,7 +273,7 @@ void pref_2dc_throttle(void) {
   }
 }
 
-Addr pref_2dc_hash(Addr lineIndex, Addr loadPC, int deltaA, int deltaB) {
+Addr pref_2dc_hash(Pref_2DC* tdc_hwp, Addr lineIndex, Addr loadPC, int deltaA, int deltaB) {
   Addr res = 0;
   uns  cache_indexbitsA;
   uns  cache_indexbitsB;

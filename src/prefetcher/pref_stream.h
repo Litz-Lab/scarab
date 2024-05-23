@@ -29,6 +29,7 @@
 #define __PREF_STREAM_H__
 
 #include "globals/global_types.h"
+#include "pref_common.h"
 
 /**************************************************************************************/
 /* Forward Declarations */
@@ -78,47 +79,60 @@ typedef struct Pref_Stream_struct {
   uns num_tosend;
   uns num_tosend_vals[10];
 
+  CacheLevel        type;
+
 } Pref_Stream;
 
-void set_pref_stream(Pref_Stream*);
+typedef struct{
+  Pref_Stream* pref_stream_core_ul1;
+  Pref_Stream* pref_stream_core_umlc;
+} stream_prefetchers;
 
 void pref_stream_init(HWP* hwp);
-void pref_stream_per_core_done(uns proc_id);
 
+void pref_stream_per_core_done(uns proc_id);
+/*************************************************************/
+/* HWP Interface */
 void pref_stream_ul1_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
                           uns32 global_hist);
 void pref_stream_ul1_hit(uns8 proc_id, Addr lineAddr, Addr loadPC,
                          uns32 global_hist);
-void pref_stream_train(uns8 proc_id, Addr lineAddr, Addr loadPC,
-                       uns32 global_hist, Flag create);
+void pref_stream_umlc_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                          uns32 global_hist);
+void pref_stream_umlc_hit(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                         uns32 global_hist);
+/*************************************************************/
+void init_stream_core(HWP* hwp,Pref_Stream* pref_stream_core);
+void pref_stream_train(Pref_Stream* pref_stream, uns8 proc_id, Addr lineAddr, Addr loadPC,
+                       uns32 global_hist, Flag create, Flag is_mlc);
 
-int  pref_stream_train_create_stream_buffer(uns8 proc_id, Addr line_index,
+int  pref_stream_train_create_stream_buffer(Pref_Stream* pref_stream, uns8 proc_id, Addr line_index,
                                             Flag train, Flag create,
                                             int extra_dis);
-Flag pref_stream_train_stream_filter(Addr line_index);
+Flag pref_stream_train_stream_filter(Pref_Stream* pref_stream, Addr line_index);
 
-void pref_stream_addto_train_stream_filter(Addr line_index);
+void pref_stream_addto_train_stream_filter(Pref_Stream* pref_stream, Addr line_index);
 
-Flag pref_stream_req_queue_filter(Addr line_addr);
+Flag pref_stream_req_queue_filter(Pref_Stream* pref_stream, Addr line_addr);
 
-void pref_stream_remove_redundant_stream(int hit_index);
+void pref_stream_remove_redundant_stream(Pref_Stream* pref_stream, int hit_index);
 
 Flag pref_stream_bw_prefetchable(uns proc_id, Addr line_addr);
 
 // Used when throttling using the overall accuracy numbers
-void pref_stream_throttle(uns8 proc_id);
+void pref_stream_throttle(Pref_Stream* pref_stream, uns8 proc_id);
 
-void pref_stream_throttle_fb(uns8 proc_id);
+void pref_stream_throttle_fb(Pref_Stream* pref_stream, uns8 proc_id);
 
 /////////////////////////////////////////////////
 // Used when throttling for each stream separately
 // NON FUNCTIONAL CURRENTLY
-void pref_stream_throttle_streams(Addr line_index);
+void pref_stream_throttle_streams(Pref_Stream* pref_stream, Addr line_index);
 void pref_stream_throttle_stream(int index);
 // Again - Use ONLY when throttling per stream
-float pref_stream_acc_getacc(int index, float pref_acc);
-void  pref_stream_acc_ul1_useful(Addr line_index);
-void  pref_stream_acc_ul1_issued(Addr line_index);
+float pref_stream_acc_getacc(Pref_Stream* pref_stream, int index, float pref_acc);
+void  pref_stream_acc_ul1_useful(Pref_Stream* pref_stream, Addr line_index);
+void  pref_stream_acc_ul1_issued(Pref_Stream* pref_stream, Addr line_index);
 ///////////////////////////////////////////////////
 
 #endif /*  __PREF_STREAM_H__*/

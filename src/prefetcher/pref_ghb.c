@@ -57,28 +57,39 @@
 
  * Divides memory into "regions" - static partition of the address space The
  * index table is indexed by the region id and gives a pointer to the last
- * access in that region in the GHB */
+ * access in that region in the GHB 
+ */
+
+/*
+ * This prefetcher is implemented in a per-core way, meaning each core has its own instance of the prefetcher.
+ * The proc_id parameter indicates which core is using the prefetcher, allowing the function to maintain 
+ * separate contexts for each core.
+ */
 
 /**************************************************************************************/
 /* Macros */
 #define DEBUG(proc_id, args...) _DEBUG(proc_id, DEBUG_PREF_GHB, ##args)
-
-Pref_GHB* ghb_hwp_core;
-Pref_GHB* ghb_hwp;
-
-void set_pref_ghb(Pref_GHB* new_ghb_hwp) {
-  ghb_hwp = new_ghb_hwp;
-}
-
-
+ghb_prefetchers ghb_prefetchers_array;
 void pref_ghb_init(HWP* hwp) {
-  int  ii;
-  uns8 proc_id;
-
   if(!PREF_GHB_ON)
     return;
-  ghb_hwp_core = (Pref_GHB*)malloc(sizeof(Pref_GHB) * NUM_CORES);
 
+  if(PREF_UMLC_ON){
+    ghb_prefetchers_array.ghb_hwp_core_umlc = (Pref_GHB*)malloc(sizeof(Pref_GHB) * NUM_CORES);
+    ghb_prefetchers_array.ghb_hwp_core_umlc-> type = UMLC;
+    init_ghb_core(hwp, ghb_prefetchers_array.ghb_hwp_core_umlc);
+  }
+  if(PREF_UL1_ON){
+    ghb_prefetchers_array.ghb_hwp_core_ul1  = (Pref_GHB*)malloc(sizeof(Pref_GHB) * NUM_CORES);
+    ghb_prefetchers_array.ghb_hwp_core_ul1-> type = UL1;
+    init_ghb_core(hwp, ghb_prefetchers_array.ghb_hwp_core_ul1);
+  }
+
+}
+
+void init_ghb_core(HWP* hwp,Pref_GHB* ghb_hwp_core) {
+  int  ii;
+  uns8 proc_id;
   for(proc_id = 0; proc_id < NUM_CORES; proc_id++) {
     ghb_hwp_core[proc_id].hwp_info          = hwp->hwp_info;
     ghb_hwp_core[proc_id].hwp_info->enabled = TRUE;
@@ -113,20 +124,29 @@ void pref_ghb_init(HWP* hwp) {
   }
 }
 
+
 void pref_ghb_ul1_prefhit(uns8 proc_id, Addr lineAddr, Addr loadPC,
                           uns32 global_hist) {
-  set_pref_ghb(&ghb_hwp_core[proc_id]);
-  pref_ghb_ul1_train(proc_id, lineAddr, loadPC, TRUE);
+  pref_ghb_train(&ghb_prefetchers_array.ghb_hwp_core_ul1[proc_id], proc_id, lineAddr, loadPC, TRUE);
 }
 
 void pref_ghb_ul1_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
                        uns32 global_hist) {
-  set_pref_ghb(&ghb_hwp_core[proc_id]);
-  pref_ghb_ul1_train(proc_id, lineAddr, loadPC, FALSE);
+  pref_ghb_train(&ghb_prefetchers_array.ghb_hwp_core_ul1[proc_id], proc_id, lineAddr, loadPC, FALSE);
 }
 
-void pref_ghb_ul1_train(uns8 proc_id, Addr lineAddr, Addr loadPC,
-                        Flag ul1_hit) {
+void pref_ghb_umlc_prefhit(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                          uns32 global_hist) {
+  pref_ghb_train(&ghb_prefetchers_array.ghb_hwp_core_umlc[proc_id], proc_id, lineAddr, loadPC, TRUE);
+}
+
+void pref_ghb_umlc_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                       uns32 global_hist) {
+  pref_ghb_train(&ghb_prefetchers_array.ghb_hwp_core_umlc[proc_id], proc_id, lineAddr, loadPC, FALSE);
+}
+
+void pref_ghb_train(Pref_GHB* ghb_hwp, uns8 proc_id, Addr lineAddr, Addr loadPC,
+                        Flag is_hit) {
   // 1. adds address to ghb
   // 2. sends upto "degree" prefetches to the prefQ
   int ii;
@@ -155,7 +175,7 @@ void pref_ghb_ul1_train(uns8 proc_id, Addr lineAddr, Addr loadPC,
     }
   }
   if(czone_idx == -1) {
-    if(ul1_hit) {  // ONLY TRAIN on ul1_hit
+    if(is_hit) {  // ONLY TRAIN on hit
       return;
     }
 
@@ -177,13 +197,13 @@ void pref_ghb_ul1_train(uns8 proc_id, Addr lineAddr, Addr loadPC,
     return;
   }
   if(PREF_THROTTLE_ON) {
-    pref_ghb_throttle();
+    pref_ghb_throttle(ghb_hwp);
   }
   if(PREF_THROTTLEFB_ON) {
-    pref_ghb_throttle_fb();
+    pref_ghb_throttle_fb(ghb_hwp);
   }
 
-  pref_ghb_create_newentry(czone_idx, lineAddr, index_tag, old_ptr);
+  pref_ghb_create_newentry(ghb_hwp, czone_idx, lineAddr, index_tag, old_ptr);
 
   for(ii = 0; ii < ghb_hwp->deltab_size; ii++)
     ghb_hwp->delta_buffer[ii] = 0;
@@ -191,7 +211,7 @@ void pref_ghb_ul1_train(uns8 proc_id, Addr lineAddr, Addr loadPC,
   // Now ghb_tail points to the new entry. Work backwards to find a 2 delta
   // match...
   ghb_idx = ghb_hwp->ghb_buffer[ghb_hwp->ghb_tail].ghb_ptr;
-  DEBUG(0, "ul1hit:%d lineidx:%llx loadPC:%llx\n", ul1_hit, lineIndex, loadPC);
+  DEBUG(0, "hit:%d lineidx:%llx loadPC:%llx\n", is_hit, lineIndex, loadPC);
   while(ghb_idx != -1 && num_pref_sent < ghb_hwp->pref_degree) {
     int delta = currLineIndex - ghb_hwp->ghb_buffer[ghb_idx].miss_index;
     if(delta > 100 || delta < -100)
@@ -213,7 +233,9 @@ void pref_ghb_ul1_train(uns8 proc_id, Addr lineAddr, Addr loadPC,
           lineIndex += delta1;
           ASSERT(proc_id,
                  proc_id == (lineIndex >> (58 - LOG2(DCACHE_LINE_SIZE))));
-          pref_addto_ul1req_queue_set(proc_id, lineIndex, ghb_hwp->hwp_info->id,
+          if(ghb_hwp->type == UMLC)pref_addto_umlc_req_queue(
+               proc_id, lineIndex, ghb_hwp->hwp_info->id);
+          else pref_addto_ul1req_queue_set(proc_id, lineIndex, ghb_hwp->hwp_info->id,
                                       0, loadPC, 0, FALSE);  // FIXME
         }
       } else {
@@ -228,9 +250,10 @@ void pref_ghb_ul1_train(uns8 proc_id, Addr lineAddr, Addr loadPC,
             lineIndex += ghb_hwp->delta_buffer[deltab_idx];
             ASSERT(proc_id,
                    proc_id == (lineIndex >> (58 - LOG2(DCACHE_LINE_SIZE))));
-            pref_addto_ul1req_queue_set(proc_id, lineIndex,
-                                        ghb_hwp->hwp_info->id, 0, loadPC, 0,
-                                        FALSE);  // FIXME
+            if(ghb_hwp->type == UMLC)pref_addto_umlc_req_queue(
+               proc_id, lineIndex, ghb_hwp->hwp_info->id);
+            else pref_addto_ul1req_queue_set(proc_id, lineIndex, ghb_hwp->hwp_info->id,
+                                      0, loadPC, 0, FALSE);  // FIXME
             DEBUG(0, "Sent %llx\n", lineIndex);
             deltab_idx = CIRC_DEC(deltab_idx, ghb_hwp->deltab_size);
             if(deltab_idx > curr_deltab_size) {
@@ -249,7 +272,7 @@ void pref_ghb_ul1_train(uns8 proc_id, Addr lineAddr, Addr loadPC,
   }
 }
 
-void pref_ghb_create_newentry(int idx, Addr line_addr, Addr czone_tag,
+void pref_ghb_create_newentry(Pref_GHB* ghb_hwp, int idx, Addr line_addr, Addr czone_tag,
                               int old_ptr) {
   int rev_ptr;
   int rev_idx_ptr;
@@ -294,7 +317,7 @@ void pref_ghb_create_newentry(int idx, Addr line_addr, Addr czone_tag,
   ghb_hwp->index_table[idx].ghb_ptr = ghb_hwp->ghb_tail;
 }
 
-void pref_ghb_throttle(void) {
+void pref_ghb_throttle(Pref_GHB* ghb_hwp) {
   int dyn_shift = 0;
 
   float acc = pref_get_accuracy(0, ghb_hwp->hwp_info->id);  // FIXME
@@ -357,7 +380,7 @@ void pref_ghb_throttle(void) {
   }
 }
 
-void pref_ghb_throttle_fb(void) {
+void pref_ghb_throttle_fb(Pref_GHB* ghb_hwp) {
   pref_get_degfb(0, ghb_hwp->hwp_info->id);  // FIXME
   ASSERT(0, ghb_hwp->hwp_info->dyn_degree_core[0] >= 0 &&
               ghb_hwp->hwp_info->dyn_degree_core[0] <= 4);  // FIXME

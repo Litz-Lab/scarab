@@ -28,6 +28,8 @@
 #ifndef __PREF_2DC_H__
 #define __PREF_2DC_H__
 
+#include "pref_common.h"
+
 typedef enum Pref_2DC_HashFunc_Enum {
   PREF_2DC_HASH_FUNC_DEFAULT,
 } Pref_2DC_HashFunc;
@@ -52,20 +54,34 @@ typedef struct Pref_2DC_Struct {
   Addr              last_loadPC;
   Pref_2DC_HashFunc hash_func;
   Pref_2DC_Region*  regions;
+  CacheLevel        type;
 } Pref_2DC;
+
+typedef struct{
+  Pref_2DC* tdc_hwp_umlc;
+  Pref_2DC* tdc_hwp_ul1;
+} tdc_prefetchers;
 
 /*************************************************************/
 /* HWP Interface */
 void pref_2dc_init(HWP* hwp);
-void pref_2dc_ul1_train(Addr lineAddr, Addr loadPC, Flag ul1_hit);
+
 void pref_2dc_ul1_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
                        uns32 global_hist);
 void pref_2dc_ul1_prefhit(uns8 proc_id, Addr lineAddr, Addr loadPC,
                           uns32 global_hist);
+void pref_2dc_umlc_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                       uns32 global_hist);
+void pref_2dc_umlc_prefhit(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                          uns32 global_hist);
+/*************************************************************/
+/* Internal Function */
+void init_2dc(HWP* hwp, Pref_2DC* tdc_hwp_core);
 
+void pref_2dc_train(Pref_2DC* tdc_hwp, Addr lineAddr, Addr loadPC, Flag is_hit);
 /*************************************************************/
 /* Misc functions */
-void pref_2dc_throttle(void);
-Addr pref_2dc_hash(Addr lineIndex, Addr loadPC, int deltaA, int deltaB);
+void pref_2dc_throttle(Pref_2DC* tdc_hwp);
+Addr pref_2dc_hash(Pref_2DC* tdc_hwp,Addr lineIndex, Addr loadPC, int deltaA, int deltaB);
 
 #endif /*  __PREF_2DC_H__*/

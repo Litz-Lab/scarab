@@ -51,6 +51,8 @@
 
 DEF_PARAM( pref_framework_on                   , PREF_FRAMEWORK_ON                   , Flag            , Flag               , FALSE     ,    )
 DEF_PARAM( pref_trace_on                       , PREF_TRACE_ON                       , Flag            , Flag               , FALSE     ,    )
+DEF_PARAM( pref_umlc_on                        , PREF_UMLC_ON                         , Flag            , Flag               , FALSE     ,    )
+DEF_PARAM( pref_ul1_on                         , PREF_UL1_ON                         , Flag            , Flag               , TRUE      ,    )
 DEF_PARAM( pref_dl0req_queue_size              , PREF_DL0REQ_QUEUE_SIZE              , uns             , uns                , 32        ,    )
 DEF_PARAM( pref_umlc_req_queue_size            , PREF_UMLC_REQ_QUEUE_SIZE            , uns             , uns                , 64        ,    )
 DEF_PARAM( pref_ul1req_queue_size              , PREF_UL1REQ_QUEUE_SIZE              , uns             , uns                , 128       ,    )

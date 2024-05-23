@@ -44,6 +44,7 @@
 #include "memory/memory.param.h"
 #include "prefetcher//pref_stridepc.h"
 #include "prefetcher//pref_stridepc.param.h"
+#include "prefetcher/pref.param.h"
 #include "prefetcher/pref_common.h"
 #include "statistics.h"
 
@@ -52,26 +53,40 @@
    Essentially use the load's PC to index into a table of prefetch entries
 */
 
+/*
+ * This prefetcher is implemented in a unified way where all cores share the same prefetcher instance.
+ * As a result, the proc_id received as a parameter is ignored.
+ */
+
 /**************************************************************************************/
 /* Macros */
 #define DEBUG(args...) _DEBUG(DEBUG_PREF_STRIDEPC, ##args)
 
-Pref_StridePC* stridepc_hwp;
-Pref_StridePC* stridepc_hwp_core;
-
-void set_pref_stridepc(Pref_StridePC* new_stridepc) {
-  stridepc_hwp = new_stridepc;
-}
-
+stridepc_prefetchers stridepc_prefetche_array;
 
 void pref_stridepc_init(HWP* hwp) {
-  uns8 proc_id;
 
   if(!PREF_STRIDEPC_ON)
     return;
   hwp->hwp_info->enabled = TRUE;
 
-  stridepc_hwp_core = (Pref_StridePC*)malloc(sizeof(Pref_StridePC) * NUM_CORES);
+  if(PREF_UMLC_ON){
+    stridepc_prefetche_array.stridepc_hwp_core_umlc        = (Pref_StridePC*)malloc(sizeof(Pref_StridePC) * NUM_CORES);
+    stridepc_prefetche_array.stridepc_hwp_core_umlc->type  = UMLC;
+    init_stridepc(hwp, stridepc_prefetche_array.stridepc_hwp_core_umlc);
+  }
+  if(PREF_UL1_ON){
+    stridepc_prefetche_array.stridepc_hwp_core_ul1        = (Pref_StridePC*)malloc(sizeof(Pref_StridePC) * NUM_CORES);
+    stridepc_prefetche_array.stridepc_hwp_core_ul1->type  = UL1;
+    init_stridepc(hwp, stridepc_prefetche_array.stridepc_hwp_core_ul1);
+  }
+
+
+
+}
+
+void init_stridepc(HWP* hwp, Pref_StridePC* stridepc_hwp_core) {
+  uns8 proc_id;
 
   for(proc_id = 0; proc_id < NUM_CORES; proc_id++) {
     stridepc_hwp_core[proc_id].hwp_info     = hwp->hwp_info;
@@ -82,18 +97,26 @@ void pref_stridepc_init(HWP* hwp) {
 
 void pref_stridepc_ul1_hit(uns8 proc_id, Addr lineAddr, Addr loadPC,
                            uns32 global_hist) {
-  set_pref_stridepc(&stridepc_hwp_core[proc_id]);
-  pref_stridepc_ul1_train(proc_id, lineAddr, loadPC, TRUE);
+  pref_stridepc_train(&stridepc_prefetche_array.stridepc_hwp_core_ul1[proc_id], proc_id, lineAddr, loadPC, TRUE);
 }
 
 void pref_stridepc_ul1_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
                             uns32 global_hist) {
-  set_pref_stridepc(&stridepc_hwp_core[proc_id]);
-  pref_stridepc_ul1_train(proc_id, lineAddr, loadPC, FALSE);
+  pref_stridepc_train(&stridepc_prefetche_array.stridepc_hwp_core_ul1[proc_id], proc_id, lineAddr, loadPC, FALSE);
 }
 
-void pref_stridepc_ul1_train(uns8 proc_id, Addr lineAddr, Addr loadPC,
-                             Flag ul1_hit) {
+void pref_stridepc_umlc_hit(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                           uns32 global_hist) {
+  pref_stridepc_train(&stridepc_prefetche_array.stridepc_hwp_core_umlc[proc_id], proc_id, lineAddr, loadPC, TRUE);
+}
+
+void pref_stridepc_umlc_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                            uns32 global_hist) {
+  pref_stridepc_train(&stridepc_prefetche_array.stridepc_hwp_core_umlc[proc_id], proc_id, lineAddr, loadPC, FALSE);
+}
+
+void pref_stridepc_train(Pref_StridePC* stridepc_hwp, uns8 proc_id, Addr lineAddr, Addr loadPC,
+                             Flag is_hit) {
   int ii;
   int idx = -1;
 
@@ -113,7 +136,7 @@ void pref_stridepc_ul1_train(uns8 proc_id, Addr lineAddr, Addr loadPC,
     }
   }
   if(idx == -1) {
-    if(ul1_hit) {  // ONLY TRAIN on hit
+    if(is_hit) {  // ONLY TRAIN on hit
       return;
     }
     for(ii = 0; ii < PREF_STRIDEPC_TABLE_N; ii++) {
@@ -182,12 +205,21 @@ void pref_stridepc_ul1_train(uns8 proc_id, Addr lineAddr, Addr loadPC,
         ASSERT(proc_id,
                proc_id == (pref_index >> (58 - LOG2(DCACHE_LINE_SIZE))));
 
-        if(!pref_addto_ul1req_queue(proc_id,
-                                    (PREF_STRIDEPC_USELOADADDR ?
-                                       (pref_index >> LOG2(DCACHE_LINE_SIZE)) :
-                                       pref_index),
-                                    stridepc_hwp->hwp_info->id))  // FIXME
-          break;                                                  // q is full
+          if(stridepc_hwp->type == UMLC){ if(!pref_addto_umlc_req_queue(proc_id,
+                (PREF_STRIDEPC_USELOADADDR ?
+                (pref_index >> LOG2(DCACHE_LINE_SIZE)) :
+                    pref_index),
+              stridepc_hwp->hwp_info->id)){
+            break;}}
+          else{
+            if(!pref_addto_ul1req_queue(proc_id,
+                (PREF_STRIDEPC_USELOADADDR ?
+                (pref_index >> LOG2(DCACHE_LINE_SIZE)) :
+                    pref_index),
+              stridepc_hwp->hwp_info->id))  // FIXME
+          break;   }
+
+                                               // q is full
         entry->pref_last_index = pref_index;
       }
     } else {

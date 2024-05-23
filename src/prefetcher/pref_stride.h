@@ -69,19 +69,31 @@ typedef struct Pref_Stride_Struct {
   Stride_Region_Table_Entry* region_table;
   // Index table
   Stride_Index_Table_Entry* index_table;
+  CacheLevel        type;
 } Pref_Stride;
 
+typedef struct{
+  Pref_Stride* stride_hwp_ul1;
+  Pref_Stride* stride_hwp_umlc;
+} stride_prefetchers;
 /*************************************************************/
 /* HWP Interface */
 void pref_stride_init(HWP* hwp);
-void pref_stride_ul1_train(Addr lineAddr, Addr loadPC, Flag ul1_hit);
+
 void pref_stride_ul1_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
                           uns32 global_hist);
 void pref_stride_ul1_hit(uns8 proc_id, Addr lineAddr, Addr loadPC,
                          uns32 global_hist);
-
+void pref_stride_umlc_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                          uns32 global_hist);
+void pref_stride_umlc_hit(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                         uns32 global_hist);
+/*************************************************************/
+/* Internal Function */
+void init_stride(HWP* hwp, Pref_Stride* stride_hwp);
+void pref_stride_train(Pref_Stride* stride_hwp, Addr lineAddr, Addr loadPC, Flag is_hit);
 /*************************************************************/
 /* Misc functions */
-void pref_stride_create_newentry(int idx, Addr line_addr, Addr region_tag);
+void pref_stride_create_newentry(Pref_Stride* stride_hwp, int idx, Addr line_addr, Addr region_tag);
 
 #endif /*  __PREF_STRIDE_H__*/

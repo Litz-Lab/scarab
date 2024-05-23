@@ -312,6 +312,8 @@ void pref_umlc_miss(uns8 proc_id, Addr line_addr, Addr load_PC,
   int ii;
   if(!PREF_FRAMEWORK_ON)
     return;
+  if(!PREF_UMLC_ON || !MLC_PRESENT)
+    return;
 
   // IGNORE BELOW
   if(PREF_TRACE_ON)
@@ -335,6 +337,8 @@ void pref_umlc_hit(uns8 proc_id, Addr line_addr, Addr load_PC,
   int ii;
   if(!PREF_FRAMEWORK_ON)
     return;
+  if(!PREF_UMLC_ON || !MLC_PRESENT)
+    return;
   if(PREF_TRACE_ON)
     fprintf(PREF_TRACE_OUT, "%s \t %s \t %s \t %s\n", hexstr64s(cycle_count),
             hexstr64s(0), hexstr64s(line_addr), "UMLC_HIT");
@@ -349,6 +353,8 @@ void pref_umlc_hit(uns8 proc_id, Addr line_addr, Addr load_PC,
 void pref_umlc_pref_hit_late(uns8 proc_id, Addr line_addr, Addr load_PC,
                              uns32 global_hist, uns8 prefetcher_id) {
   if(!PREF_FRAMEWORK_ON)
+    return;
+  if(!PREF_UMLC_ON || !MLC_PRESENT)
     return;
   if(prefetcher_id == 0)
     return;
@@ -366,6 +372,8 @@ void pref_umlc_pref_hit(uns8 proc_id, Addr line_addr, Addr load_PC,
     return;
 
   if(!PREF_FRAMEWORK_ON)
+    return;
+  if(!PREF_UMLC_ON || !MLC_PRESENT)
     return;
 
   if(PREF_TRACE_ON)
@@ -385,6 +393,8 @@ void pref_ul1_miss(uns8 proc_id, Addr line_addr, Addr load_PC,
                    uns32 global_hist) {
   int ii;
   if(!PREF_FRAMEWORK_ON)
+    return;
+  if(!PREF_UL1_ON)
     return;
   if(DUMB_CORE_ON && DUMB_CORE == proc_id)
     return;  // dumb core should not trigger prefetches
@@ -414,6 +424,8 @@ void pref_ul1_hit(uns8 proc_id, Addr line_addr, Addr load_PC,
   int ii;
   if(!PREF_FRAMEWORK_ON)
     return;
+  if(!PREF_UL1_ON)
+    return;
   if(DUMB_CORE_ON && DUMB_CORE == proc_id)
     return;  // dumb core should not trigger prefetches
   if(PREF_TRACE_ON)
@@ -430,6 +442,8 @@ void pref_ul1_hit(uns8 proc_id, Addr line_addr, Addr load_PC,
 void pref_ul1_pref_hit_late(uns8 proc_id, Addr line_addr, Addr load_PC,
                             uns32 global_hist, uns8 prefetcher_id) {
   if(!PREF_FRAMEWORK_ON)
+    return;
+  if(!PREF_UL1_ON)
     return;
   if(prefetcher_id == 0)
     return;
@@ -451,6 +465,8 @@ void pref_ul1_pref_hit(uns8 proc_id, Addr line_addr, Addr load_PC,
     return;
 
   if(!PREF_FRAMEWORK_ON)
+    return;
+  if(!PREF_UL1_ON)
     return;
 
   if(PREF_TRACE_ON)

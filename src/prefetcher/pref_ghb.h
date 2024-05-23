@@ -63,24 +63,37 @@ typedef struct Pref_GHB_Struct {
   uns pref_degree;
 
   uns pref_degree_vals[5];
+  CacheLevel        type;
 } Pref_GHB;
+
+typedef struct{
+  Pref_GHB* ghb_hwp_core_ul1;
+  Pref_GHB* ghb_hwp_core_umlc;
+} ghb_prefetchers;
 
 /*************************************************************/
 /* HWP Interface */
-void set_pref_ghb(Pref_GHB* new_ghb_hwp);
 void pref_ghb_init(HWP* hwp);
-void pref_ghb_ul1_train(uns8 proc_id, Addr lineAddr, Addr loadPC, Flag ul1_hit);
+
 void pref_ghb_ul1_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
                        uns32 global_hist);
 void pref_ghb_ul1_prefhit(uns8 proc_id, Addr lineAddr, Addr loadPC,
                           uns32 global_hist);
+void pref_ghb_umlc_miss(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                       uns32 global_hist);
+void pref_ghb_umlc_prefhit(uns8 proc_id, Addr lineAddr, Addr loadPC,
+                          uns32 global_hist);
 
 /*************************************************************/
+/* Internal function */
+void init_ghb_core(HWP* hwp, Pref_GHB* ghb_hwp_core);
+void pref_ghb_train(Pref_GHB* ghb_hwp, uns8 proc_id, Addr lineAddr, Addr loadPC, Flag is_hit);
+/*************************************************************/
 /* Misc functions */
-void pref_ghb_create_newentry(int idx, Addr line_addr, Addr czone_tag,
+void pref_ghb_create_newentry(Pref_GHB* ghb_hwp, int idx, Addr line_addr, Addr czone_tag,
                               int old_ptr);
 
-void pref_ghb_throttle(void);
-void pref_ghb_throttle_fb(void);
+void pref_ghb_throttle(Pref_GHB* ghb_hwp);
+void pref_ghb_throttle_fb(Pref_GHB* ghb_hwp);
 
 #endif /*  __PREF_GHB_H__*/

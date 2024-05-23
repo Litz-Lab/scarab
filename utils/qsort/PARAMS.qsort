@@ -114,7 +114,7 @@
 ### Mid-level cache
 
 # Enable use of a midlevel cache between i/d and L1
---mlc_present                   0
+--mlc_present                   1
 
 ### LLC
 --l1_size                       1048576
@@ -127,7 +127,9 @@
 
 ### Prefetcher
 --pref_framework_on             1
---pref_stream_on 		1
+--pref_umlc_on                  0
+--pref_ul1_on                   1
+--pref_stream_on 		        1
 --pref_train_on_pref_misses     0
 --pref_oracle_train             0
 --pref_ul1req_queue_overwrite_on_full 1
