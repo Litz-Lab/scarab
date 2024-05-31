@@ -34,23 +34,19 @@
 Model model_table [] = {
     /* id                , memory type       , name              , init                  , reset */
     /*                   , cycle             , debug             , per core done         , done */
-    /*                   , wake              , break             , op fetched hook       , op retired hook */
-    /*                   , warmup_func */
+    /*                   , wake              , op fetched hook   , op retired hook       , warmup_func */
     /* --------------------------------------------------------------------------------------------------- */
     {  CMP_MODEL         , MODEL_MEM         , "cmp"             , cmp_init              , cmp_reset
                          , cmp_cycle         , cmp_debug         , cmp_per_core_done     , cmp_done
-                         , cmp_wake          , NULL              , NULL                  , cmp_retire_hook
-			             , cmp_warmup, } ,
+                         , cmp_wake          , NULL              , cmp_retire_hook       , cmp_warmup, } ,
 
     {  DUMB_MODEL        , MODEL_MEM         , "dumb"            , dumb_init             , dumb_reset
                          , dumb_cycle        , dumb_debug        , NULL                  , dumb_done
-                         , NULL              , NULL              , NULL                  , NULL
-			             , NULL, } ,
+                         , NULL              , NULL              , NULL                  , NULL, } ,
 
     {  NUM_MODELS        , 0                 , 0                 , NULL                  , NULL
                          , NULL              , NULL              , NULL                  , NULL
-                         , NULL              , NULL              , NULL                  , NULL                   
-			             , NULL, } ,
+                         , NULL              , NULL              , NULL                  , NULL, } ,
 };
 
 // note: the model's mem field is for easy distinction of which memory

@@ -107,7 +107,6 @@ Scarab's source code is organized as follows:
     + Pipeline
       + stage_data.h
       + icache_stage.h
-      + packet_build.h
       + decode_stage.h
       + dcache_stage.h
       + map_stage.h

@@ -381,7 +381,7 @@ void update_fdip() {
 
     Addr last_line_addr = per_core_last_line_addr[fdip_proc_id];
     Flag emit_new_prefetch = FALSE;
-    if (ftq_entry_per_cycle >= MAX_FTQ_ENTRY_CYC && ops_per_cycle >= std::max(UC_ISSUE_WIDTH, IC_ISSUE_WIDTH)) {
+    if (ftq_entry_per_cycle >= MAX_FTQ_ENTRY_CYC && ops_per_cycle >= IC_ISSUE_WIDTH) {
       DEBUG(fdip_proc_id, "Break due to max FTQ entries per cycle\n");
       break_reason = BR_MAX_FTQ_ENTRY_CYC;
       break;

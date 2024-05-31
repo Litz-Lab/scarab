@@ -113,7 +113,7 @@ DEF_PARAM(icache_repl, ICACHE_REPL, uns, uns, 0, )
 
 /* Uop Cache */
 DEF_PARAM(uop_cache_enable, UOP_CACHE_ENABLE, uns, uns, 1,)
-DEF_PARAM(  uop_cache_additional_issue_bandwidth, UOP_CACHE_ADDITIONAL_ISSUE_BANDWIDTH, uns, uns, 0                      ,       )
+DEF_PARAM(always_lookup_icache, ALWAYS_LOOKUP_ICACHE, uns, uns, 0,)
 DEF_PARAM(  oracle_perfect_uop_cache       , ORACLE_PERFECT_UOP_CACHE        , Flag   , Flag    , FALSE                  ,       )
 DEF_PARAM(  inf_size_uop_cache             , INF_SIZE_UOP_CACHE              , Flag   , Flag    , FALSE                  ,       )
 DEF_PARAM(  inf_size_uop_cache_pw_size_lim , INF_SIZE_UOP_CACHE_PW_SIZE_LIM  , uns    , uns     , 0                      ,       )
@@ -125,7 +125,7 @@ DEF_PARAM(  uop_cache_assoc                , UOP_CACHE_ASSOC                 , u
 DEF_PARAM(  uop_cache_max_imm_disp_line    , UOP_CACHE_MAX_IMM_DISP_LINE     , uns    , uns     , 4                      ,       )
 DEF_PARAM(  iprf_on_uop_cache_hit          , IPRF_ON_UOP_CACHE_HIT           , Flag   , Flag    , FALSE                  ,       )
 DEF_PARAM(  uop_cache_repl                 , UOP_CACHE_REPL                  , uns    , uns     , 0                      ,       )
-DEF_PARAM(uoc_ic_switch_frag_disable, UOC_IC_SWITCH_FRAG_DISABLE, Flag, Flag, FALSE,)
+DEF_PARAM(  map_consume_from_both_srcs     , MAP_CONSUME_FROM_BOTH_SRCS      , Flag   , Flag    , FALSE                  ,       )
 // For REPL_STICKY_PRIORITY_LINES; Likelihood of lines to be sticky when updating repl as a percent (0-100). If not sticky, default to LRU.
 DEF_PARAM(priority_line_stickiness_percent, PRIORITY_LINE_STICKINESS_PERCENT, int, int, 50,)
 DEF_PARAM(pw_priority_list_filepath, PW_PRIORITY_LIST_FILEPATH, char*, string, "pw_priority_list.csv", )
@@ -143,7 +143,7 @@ DEF_PARAM(  fdip_uc_assoc                  , FDIP_UC_ASSOC                   , u
 DEF_PARAM(  fdip_uc_insert_replpol         , FDIP_UC_INSERT_REPLPOL          , uns    , uns     , 0                      ,       )
 // Allow the map stage to consume ops originating from either the icache or uop cache path in the same cycle.
 DEF_PARAM(  map_stage_consume_from_icache_and_uoc_same_cycle, MAP_STAGE_CONSUME_FROM_ICACHE_AND_UOC_SAME_CYCLE, Flag, Flag, TRUE,)
-// max uops in queue = uop_queue_length * (ISSUE_WIDTH + UOP_CACHE_ADDITIONAL_ISSUE_BANDWIDTH)
+// max uops in queue = uop_queue_length * (ISSUE_WIDTH)
 DEF_PARAM(  uop_queue_length               , UOP_QUEUE_LENGTH                , uns    , uns     , 7                      ,       )
 
 /* L0 data */

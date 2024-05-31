@@ -30,8 +30,7 @@
 #define __MODEL_H__
 
 #include "globals/global_types.h"
-#include "packet_build.h"
-
+#include "thread.h"
 
 /**************************************************************************************/
 /* Types */
@@ -70,7 +69,6 @@ typedef struct Model_struct {
   /* these are general hook functions for various processor events
      that can be handled differently by different models */
   void (*wake_hook)(Op*, Op*, uns8);
-  enum Break_Reason_enum (*break_hook)(Op*);
   void (*op_fetched_hook)(Op*);
   void (*op_retired_hook)(Op*);  // called just before the op is freed
   void (*warmup_func)(Op* op);   /* called for warmup(may be NULL) */

@@ -171,6 +171,13 @@ Flag insert_uop_cache() {
   return success;
 }
 
+Uop_Cache_Line_Data* uop_cache_lookup_line(Addr line_addr, Addr ft_start, Addr ft_length, Flag update_repl) {
+  if (!UOP_CACHE_ENABLE) {
+    return NULL;
+  }
+  return NULL;
+}
+
 static inline Flag in_uop_cache_search(Addr search_addr, Flag update_repl, Flag offpath) {
   static Uop_Cache_Data cur_pw = {0};
   Addr line_addr;

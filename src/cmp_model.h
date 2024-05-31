@@ -51,8 +51,6 @@ typedef struct Cmp_Model_struct {
   Thread_Data* thread_data;  // cmp: one thread for each core,
   // "single_td" in sim.c is only for single core
 
-  Pb_Data* pb_data;
-
   Map_Data*         map_data;
   Bp_Recovery_Info* bp_recovery_info;
   Bp_Data*          bp_data;

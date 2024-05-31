@@ -752,7 +752,6 @@ void full_sim() {
 
   init_op_pool();
   unique_count = 1;
-  init_icache_trace(); //must happen after init_op_pool
 
   sim_limit   = trigger_create("SIM_LIMIT", SIM_LIMIT, TRIGGER_ONCE);
   clear_stats = trigger_create("CLEAR_STATS", CLEAR_STATS, TRIGGER_ONCE);

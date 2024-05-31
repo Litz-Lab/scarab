@@ -156,7 +156,7 @@ void pin_exec_driven_fetch_op(uns proc_id, Op* op) {
     cached_cop_buffers[proc_id].pop_front();
   }
 
-  DEBUG(proc_id, "Fetch Op end: %llx (%llu)\n", op->fetch_addr, op->inst_uid);
+  DEBUG(proc_id, "Fetch Op end: %llx (%llu)\n", op->inst_info->addr, op->inst_uid);
 }
 
 void pin_exec_driven_redirect(uns proc_id, uns64 inst_uid, Addr fetch_addr) {

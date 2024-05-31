@@ -103,9 +103,10 @@ const char* const bar_type_names[] = {"NOT_BAR"};
 DEFINE_ENUM(Op_State, OP_STATE_LIST);
 
 const char* const icache_state_names[] = {
-  "IC_FETCH",         "IC_REFETCH",           "IC_FILL",
-  "IC_WAIT_FOR_MISS", "IC_WAIT_FOR_REDIRECT", "IC_WAIT_FOR_EMPTY_ROB",
-  "IC_WAIT_FOR_TIMER"};
+  "SERVING_INIT",          "ICACHE_FINISHED_FT",    "ICACHE_FINISHED_FT_EXPECTING_NEXT",
+  "UOP_CACHE_FINISHED_FT", "ICACHE_LOOKUP_SERVING", "ICACHE_NO_LOOKUP_SERVING",
+  "ICACHE_RETRY_MEM_REQ",  "UOP_CACHE_SERVING",      "WAIT_FOR_MISS",
+  "WAIT_FOR_EMPTY_ROB",    "WAIT_FOR_RENAME"};
 
 const char* const tcache_state_names[] = {"TC_FETCH",
                                           "TC_WAIT_FOR_MISS",

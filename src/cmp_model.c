@@ -454,11 +454,6 @@ void cmp_warmup(Op* op) {
 
   // Warmup caches for instructions
   Icache_Stage* ic = &(cmp_model.icache_stage[proc_id]);
-  // keep next_fetch_addr current to avoid confusing simulation mode
-  if(op->eom) {
-    ic->next_fetch_addr = op->oracle_info.npc;
-    ASSERT_PROC_ID_IN_ADDR(ic->proc_id, ic->next_fetch_addr)
-  }
   Cache*      icache  = &(ic->icache);
   Inst_Info** ic_data = (Inst_Info**)cache_access(icache, ia, &dummy_line_addr,
                                                   TRUE);

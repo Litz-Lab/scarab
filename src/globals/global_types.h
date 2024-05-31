@@ -41,7 +41,6 @@ typedef struct Inst_Info_struct     Inst_Info;
 typedef struct Mem_Req_struct       Mem_Req;
 typedef struct Op_Info_struct       Op_Info;
 typedef struct Op_struct            Op;
-typedef struct Pb_Data_struct       Pb_Data;
 typedef struct Ports_struct         Ports;
 typedef struct Pref_Mem_Req_struct  Pref_Mem_Req;
 typedef struct Stream_Buffer_struct Stream_Buffer;

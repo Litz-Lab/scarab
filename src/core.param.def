@@ -157,11 +157,9 @@ DEF_PARAM(die_on_ret_stall_core, DIE_ON_RET_STALL_CORE, uns, uns, 0, )
 DEF_PARAM(die_on_mem_block_thresh, DIE_ON_MEM_BLOCK_THRESH, uns, uns, 0, )
 DEF_PARAM(die_on_mem_block_core, DIE_ON_MEM_BLOCK_CORE, uns, uns, 0, )
 
-DEF_PARAM(fetch_across_cache_lines, FETCH_ACROSS_CACHE_LINES, Flag, Flag,
-          FALSE, )
+DEF_PARAM(fetch_across_fetch_target, FETCH_ACROSS_FETCH_TARGET, Flag, Flag,
+          TRUE, )
 DEF_PARAM(fetch_off_path_ops, FETCH_OFF_PATH_OPS, Flag, Flag, TRUE, )
-DEF_PARAM(fetch_break_on_taken, FETCH_BREAK_ON_TAKEN, Flag, Flag, FALSE, )
-DEF_PARAM(fetch_taken_bubble_cycles, FETCH_TAKEN_BUBBLE_CYCLES, uns, uns, 0, )
 DEF_PARAM(wp_collect_stats, WP_COLLECT_STATS, Flag, Flag, FALSE, )
 DEF_PARAM(switch_ic_fetch_on_recovery, SWITCH_IC_FETCH_ON_RECOVERY, Flag, Flag,
           TRUE, )

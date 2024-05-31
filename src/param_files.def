@@ -35,7 +35,6 @@
 #include "core.param.def"
 #include "debug/debug.param.def"
 #include "bp/bp.param.def"
-#include "packet_build.param.def"
 #include "power/power.param.def"
 #include "prefetcher//stream.param.def"
 #include "prefetcher/pref.param.def"

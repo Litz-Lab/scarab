@@ -354,7 +354,6 @@ void uop_generator_get_uop(uns proc_id, Op* op, ctype_pin_inst* inst) {
   op->engine_info.inst_info    = info;
   op->engine_info.table_info   = info->table_info;
   op->off_path                 = FALSE;
-  op->fetch_addr               = op->inst_info->addr;
   op->state                    = OS_FETCHED;
   op->fu_num                   = -1;
   op->issue_cycle              = MAX_CTR;

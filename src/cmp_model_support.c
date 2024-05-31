@@ -33,7 +33,6 @@
 #include "general.param.h"
 #include "globals/assert.h"
 #include "globals/utils.h"
-#include "packet_build.h"
 #include "statistics.h"
 #include "prefetcher/fdip_new.h"
 #include "prefetcher/eip.h"
@@ -48,9 +47,6 @@ void cmp_init_cmp_model() {
   cmp_model.thread_data = (Thread_Data*)malloc(sizeof(Thread_Data) * NUM_CORES);
 
   cmp_model.map_data = (Map_Data*)malloc(sizeof(Map_Data) * NUM_CORES);
-
-  cmp_model.pb_data = (Pb_Data*)malloc(sizeof(Pb_Data) *
-                                       NUM_CORES);  // packet data
 
   cmp_model.bp_recovery_info = (Bp_Recovery_Info*)malloc(
     sizeof(Bp_Recovery_Info) * NUM_CORES);
@@ -76,7 +72,6 @@ void cmp_init_thread_data(uns8 proc_id) {
   td->proc_id = proc_id;
   init_map(proc_id);
   init_list(&td->seq_op_list, "SEQ_OP_LIST", sizeof(Op*), TRUE);
-  td->inst_addr = convert_to_cmp_addr(td->proc_id, 0);
 }
 
 
@@ -85,8 +80,6 @@ void cmp_init_thread_data(uns8 proc_id) {
 void cmp_set_all_stages(uns8 proc_id) {
   set_thread_data(&cmp_model.thread_data[proc_id]);
   set_map_data(&td->map_data);
-
-  set_pb_data(&cmp_model.pb_data[proc_id]);
 
   set_eip(proc_id);
   set_djolt(proc_id);
@@ -122,11 +115,7 @@ void cmp_init_bogus_sim(uns8 proc_id) {
   op_count[proc_id] = uop_count[proc_id] + 1;
 
   trace_setup(proc_id);
-  ic->next_fetch_addr = trace_next_fetch_addr(proc_id);
-  ASSERT_PROC_ID_IN_ADDR(ic->proc_id, ic->next_fetch_addr);
 
-  td->inst_addr = ic->next_fetch_addr;
-  ASSERT_PROC_ID_IN_ADDR(ic->proc_id, td->inst_addr);
   reset_seq_op_list(td);
   reset_map();
 

@@ -17,6 +17,15 @@
 /* Macros */
 #define UOP_CACHE_LATENCY 1  // Simulating a uop cache latency > 1 is unsupported
 
+typedef struct Uop_Cache_Line_Data_Struct {
+  // number of uops in this line
+  int num_uops;
+  // the offset for calculating the next line
+  Addr offset;
+  // is this line the end of the FT?
+  Flag end;
+} Uop_Cache_Line_Data;
+
 /**************************************************************************************/
 /* Prototypes */
 
@@ -24,6 +33,8 @@
 
 void init_uop_cache(uns8 proc_id);
 void recover_uop_cache(void);
+
+Uop_Cache_Line_Data* uop_cache_lookup_line(Addr line_addr, Addr ft_start, Addr ft_length, Flag update_repl);
 
 /* return whether the instr pc is cached (this does not consider that the whole PW 
     could already have been fetched, potentially introducing 1 incorrect cycle of latency)*/

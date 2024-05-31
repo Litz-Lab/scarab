@@ -45,7 +45,6 @@ typedef struct Thread_Info_struct {
   int low_conf_count;
   int fetch_throttle_adjust;
   // int fetch_throttle_br_th_adjust;
-  int     fetch_br_count;
   Op*     last_bp_miss_op;
   Counter corrpred_counter;
   Counter mispred_counter;
@@ -57,7 +56,6 @@ typedef struct Thread_Info_struct {
 
 typedef struct Thread_struct {
   uns8     proc_id;
-  Addr     inst_addr;
   Map_Data map_data;
   List     seq_op_list;
   ///////////////////////////////////////////////////

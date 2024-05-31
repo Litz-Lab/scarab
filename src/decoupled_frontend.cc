@@ -15,31 +15,18 @@
 
 #define DEBUG(proc_id, args...) _DEBUG(proc_id, DEBUG_DECOUPLED_FE, ##args)
 
-typedef enum FT_Ended_By_enum {
-  FT_ENDED_BY_INIT,
-  FT_ICACHE_LINE_BOUNDARY,
-  FT_TAKEN_BRANCH,
-  FT_BAR_FETCH,
-  FT_APP_EXIT
-} FT_Ended_By;
-
 typedef struct FT_struct {
   std::vector<Op*> ops;
   // indicate the next op index to read by the consumer (icache or uop)
   uint64_t op_pos;
-  // the PC of the first inst in this FT
-  Addr start;
-  // the FT size in bytes, counting from the first byte of the first inst to the last byte of the last inst
-  Addr length;
 
-  FT_Ended_By ended_by;
+  FT_Info ft_info;
 
   // FT API
   void ft_add_op(Op *op, FT_Ended_By ft_ended_by);
   void ft_free_ops_and_clear();
   bool ft_can_fetch_op();
-  bool ft_fetch_op(Op** op, Flag* end_of_ft);
-  void ft_return_op(Op *op);
+  Op* ft_fetch_op();
 } FT;
 
 // Per core fetch target queue:
@@ -288,7 +275,7 @@ void update_decoupled_fe() {
     // 2. taking a control flow op
     // 3. seeing a sysop or serializing (fence) instruction
     // 4. reaching the application exit
-    FT_Ended_By ft_ended_by = FT_ENDED_BY_INIT;
+    FT_Ended_By ft_ended_by = FT_NOT_ENDED;
     if (op->eom) {
       uns offset = ADDR_PLUS_OFFSET(op->inst_info->addr, op->inst_info->trace_info.inst_size) -
                     ROUND_DOWN(op->inst_info->addr, ICACHE_LINE_SIZE);
@@ -311,10 +298,22 @@ void update_decoupled_fe() {
     }
 
     per_core_current_ft_to_push[set_proc_id].ft_add_op(op, ft_ended_by);
-    // ft_ended_by != FT_ENDED_BY_INIT indicates the end of the current fetch target
+    // ft_ended_by != FT_NOT_ENDED indicates the end of the current fetch target
     // it is now ready to be pushed to the queue
-    if (ft_ended_by != FT_ENDED_BY_INIT) {
-      ASSERT(set_proc_id, per_core_current_ft_to_push[set_proc_id].start && per_core_current_ft_to_push[set_proc_id].length && per_core_current_ft_to_push[set_proc_id].ops.size());
+    if (ft_ended_by != FT_NOT_ENDED) {
+      ASSERT(set_proc_id, per_core_current_ft_to_push[set_proc_id].ft_info.start && per_core_current_ft_to_push[set_proc_id].ft_info.length && per_core_current_ft_to_push[set_proc_id].ops.size());
+      if (!df_ftq->empty()) {
+        // sanity check of consecutivity
+        Op* last_op = df_ftq->back().ops.back();
+        if (df_ftq->back().ft_info.ended_by == FT_TAKEN_BRANCH) {
+          ASSERT(set_proc_id, last_op->oracle_info.pred_npc == per_core_current_ft_to_push[set_proc_id].ft_info.start);
+        } else if (df_ftq->back().ft_info.ended_by == FT_BAR_FETCH) {
+          ASSERT(set_proc_id, last_op->oracle_info.pred_npc == per_core_current_ft_to_push[set_proc_id].ft_info.start ||
+                              last_op->inst_info->addr + last_op->inst_info->trace_info.inst_size == per_core_current_ft_to_push[set_proc_id].ft_info.start);
+        } else {
+          ASSERT(set_proc_id, last_op->inst_info->addr + last_op->inst_info->trace_info.inst_size == per_core_current_ft_to_push[set_proc_id].ft_info.start);
+        }
+      }
       df_ftq->emplace_back(per_core_current_ft_to_push[set_proc_id]);
       per_core_current_ft_to_push[set_proc_id] = FT();
     }
@@ -337,54 +336,35 @@ void update_decoupled_fe() {
   }
 }
 
-bool decoupled_fe_can_fetch_op(int proc_id) {
-  return per_core_current_ft_in_use[proc_id].ft_can_fetch_op() || decoupled_fe_can_fetch_ft(proc_id);
+bool decoupled_fe_current_ft_can_fetch_op(int proc_id) {
+  return per_core_current_ft_in_use[proc_id].ft_can_fetch_op();
 }
 
-// A temporary interface implementing the old API `decoupled_fe_fetch_op`
-// using the new APIs, so there are minimal changes to the icache stage for now.
-// Later the icache stage will be restrctured and this will be removed.
-bool decoupled_fe_fetch_op(Op** op, int proc_id) {
-  // if first time getting ft, fitst ft after flush, or ft used up
-  // need to fetch a new ft
-  if (!per_core_current_ft_in_use[set_proc_id].ft_can_fetch_op()) {
-    if (decoupled_fe_can_fetch_ft(proc_id)) {
-      Addr start, length;
-      decoupled_fe_fetch_ft(&start, &length, proc_id);
-    } else {
-      return false;
-    }
+// fill in the icache stage data with current FT in use
+// return if FT has ended
+// if true, the requested number of ops might not be fulfilled
+bool decoupled_fe_fill_icache_stage_data(int proc_id, int requested, Stage_Data *sd) {
+  ASSERT(proc_id, requested && requested <= sd->max_op_count - sd->op_count);
+  ASSERT(proc_id, per_core_current_ft_in_use[proc_id].ft_can_fetch_op());
+
+  while (requested && per_core_current_ft_in_use[proc_id].ft_can_fetch_op()) {
+    sd->ops[sd->op_count] = per_core_current_ft_in_use[proc_id].ft_fetch_op();
+    sd->op_count++;
+    requested--;
   }
 
-  ASSERT(proc_id, per_core_current_ft_in_use[set_proc_id].ft_can_fetch_op());
-
-  Flag end_of_ft;
-  ASSERT(proc_id, per_core_current_ft_in_use[set_proc_id].ft_fetch_op(op, &end_of_ft));
-  return true;
-}
-
-// A temporary interface implementing the old API `decoupled_fe_return_op`
-// using the new APIs, so there are minimal changes to the icache stage for now.
-// Later the icache stage will be restrctured and this will be removed.
-void decoupled_fe_return_op(Op *op) {
-  per_core_current_ft_in_use[set_proc_id].ft_return_op(op);
-
-  DEBUG(set_proc_id,
-        "Return fetched op backt to FTQ fetch_addr0x:%llx off_path:%i\n",
-        op->inst_info->addr, *off_path);
+  return !per_core_current_ft_in_use[proc_id].ft_can_fetch_op();
 }
 
 bool decoupled_fe_can_fetch_ft(int proc_id) {
   return per_core_ftq[proc_id].size() > 0;
 }
 
-bool decoupled_fe_fetch_ft(Addr* ft_start, Addr* ft_length, int proc_id) {
+FT_Info decoupled_fe_fetch_ft(int proc_id) {
   if (per_core_ftq[proc_id].size()) {
     per_core_current_ft_in_use[proc_id] = per_core_ftq[proc_id].front();
-    FT* ft = &per_core_current_ft_in_use[proc_id];
-    *ft_start = ft->start;
-    *ft_length = ft->length;
     per_core_ftq[proc_id].pop_front();
+    FT* ft = &per_core_current_ft_in_use[proc_id];
 
     for (auto it = per_core_ftq_iterators[proc_id].begin(); it != per_core_ftq_iterators[proc_id].end(); it++) {
       // When the icache consumes an FT decrement the iter's offset so it points to the same entry as before
@@ -399,24 +379,17 @@ bool decoupled_fe_fetch_ft(Addr* ft_start, Addr* ft_length, int proc_id) {
       }
     }
 
-    return true;
+    return ft->ft_info;
   }
-  return false;
+  return FT_Info();
 }
 
-uint64_t decoupled_fe_next_fetch_addr(int proc_id) {
-  //ASSERT(proc_id, per_core_ftq[proc_id].size() > 0);
-  if(!per_core_ftq[proc_id].size())
-    return frontend_next_fetch_addr(proc_id);
-
-  if(!per_core_current_ft_in_use[proc_id].ops.empty())
-    return per_core_current_ft_in_use[proc_id].ops.front()->inst_info->addr;
-
-  if(!per_core_ftq[proc_id].front().ops.empty())
-    return per_core_ftq[proc_id].front().ops.front()->inst_info->addr;
-
-  ASSERT(proc_id, 0);
-  return 0;
+FT_Info decoupled_fe_peek_ft(int proc_id) {
+  if (per_core_ftq[proc_id].size()) {
+    return per_core_ftq[proc_id].front().ft_info;
+  } else {
+    return FT_Info();
+  }
 }
   
 decoupled_fe_iter* decoupled_fe_new_ftq_iter() {
@@ -525,8 +498,8 @@ uint64_t decoupled_fe_get_ftq_num(int proc_id) {
 
 void FT::ft_add_op(Op *op, FT_Ended_By ft_ended_by) {
   if (ops.empty()) {
-    ASSERT(set_proc_id, op->bom && !start);
-    start = op->inst_info->addr;
+    ASSERT(set_proc_id, op->bom && !ft_info.start);
+    ft_info.start = op->inst_info->addr;
   } else {
     if (op->bom) {
       // assert consecutivity
@@ -538,12 +511,12 @@ void FT::ft_add_op(Op *op, FT_Ended_By ft_ended_by) {
     }
   }
   ops.emplace_back(op);
-  if (ft_ended_by != FT_ENDED_BY_INIT) {
-    ASSERT(set_proc_id, op->eom && !length);
-    ASSERT(set_proc_id, start);
-    length = op->inst_info->addr + op->inst_info->trace_info.inst_size - start;
-    ASSERT(set_proc_id, ended_by == FT_ENDED_BY_INIT);
-    ended_by = ft_ended_by;
+  if (ft_ended_by != FT_NOT_ENDED) {
+    ASSERT(set_proc_id, op->eom && !ft_info.length);
+    ASSERT(set_proc_id, ft_info.start);
+    ft_info.length = op->inst_info->addr + op->inst_info->trace_info.inst_size - ft_info.start;
+    ASSERT(set_proc_id, ft_info.ended_by == FT_NOT_ENDED);
+    ft_info.ended_by = ft_ended_by;
   }
 }
 
@@ -555,59 +528,23 @@ void FT::ft_free_ops_and_clear() {
 
   ops.clear();
   op_pos = 0;
-  start = 0;
-  length = 0;
-  ended_by = FT_ENDED_BY_INIT;
+  ft_info.start = 0;
+  ft_info.length = 0;
+  ft_info.ended_by = FT_NOT_ENDED;
 }
 
 bool FT::ft_can_fetch_op() {
   return op_pos < ops.size();
 }
 
-bool FT::ft_fetch_op(Op** op, Flag* end_of_ft) {
-  if (op_pos < ops.size()) {
-    *op = ops[op_pos];
+Op* FT::ft_fetch_op() {
+  ASSERT(set_proc_id, ft_can_fetch_op());
+  Op* op = ops[op_pos];
+  op_pos++;
 
-    if (op_pos + 1 == ops.size()) {
-      *end_of_ft = TRUE;
-    } else {
-      *end_of_ft = FALSE;
-    }
-
-    op_pos++;
-    DEBUG(set_proc_id,
-          "Fetch op from FT fetch_addr0x:%llx off_path:%i op_num:%llu\n",
-          (*op)->inst_info->addr, (*op)->off_path, (*op)->op_num);
-
-    return true;
-  }
-  return false;
-}
-
-void FT::ft_return_op(Op *op) {
-  // return op to fetch target
-  ASSERT(set_proc_id, op_pos);
-  ASSERT(set_proc_id, op == ops[op_pos-1]);
-  op_pos--;
-
-  // note: based on the reason why the op is ever returned,
-  // if the returned op if the first one in the ft,
-  // might need to think about if need to return the ft to ftq as well.
-  // in that case, need to modify per core fdip iter:
-  // ================================================
-  // for (auto it = per_core_ftq_iterators[set_proc_id].begin(); it != per_core_ftq_iterators[set_proc_id].end(); it++) {
-  //   // When the icache returns an op increment the iter's offset so it points to the same entry as before
-  //   if (it->op_pos) {
-  //     it->op_pos++;
-  //   }
-  //   if (it->flattened_op_pos) {
-  //     it->flattened_op_pos++;
-  //   }
-  // }
-  // ================================================
-
-  // for now, do not return ft anyhow.
   DEBUG(set_proc_id,
-        "Return fetched op backt to FT fetch_addr0x:%llx off_path:%i\n",
-        op->inst_info->addr, *off_path);
+        "Fetch op from FT fetch_addr0x:%llx off_path:%i op_num:%llu\n",
+        op->inst_info->addr, op->off_path, op->op_num);
+
+  return op;
 }

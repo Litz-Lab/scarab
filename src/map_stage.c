@@ -51,7 +51,7 @@
 /**************************************************************************************/
 /* Macros */
 #define DEBUG(proc_id, args...) _DEBUG(proc_id, DEBUG_MAP_STAGE, ##args)
-#define STAGE_MAX_OP_COUNT ISSUE_WIDTH + UOP_CACHE_ADDITIONAL_ISSUE_BANDWIDTH
+#define STAGE_MAX_OP_COUNT ISSUE_WIDTH
 #define STAGE_MAX_DEPTH MAP_CYCLES
 
 
@@ -171,7 +171,7 @@ void debug_map_stage() {
 /* map_cycle: */
 
 // Consume just from one: Select the stage to consume from
-// Else if UOC_IC_SWITCH_FRAG_DISABLE, also consume from the second one.
+// Else if MAP_CONSUME_FROM_BOTH_SRCS, also consume from the second one.
 void update_map_stage(Stage_Data* dec_src_sd, Stage_Data* uopq_src_sd, Flag uopq_src_is_icache) {
   Flag        stall = (map->last_sd->op_count > 0);
   Stage_Data* consume_from_sd = NULL;
@@ -227,7 +227,7 @@ void update_map_stage(Stage_Data* dec_src_sd, Stage_Data* uopq_src_sd, Flag uopq
       other_sd = dec_src_sd;
       other_is_icache = FALSE;
     }
-    fetch_from_both_srcs = UOC_IC_SWITCH_FRAG_DISABLE && cur->max_op_count >= consume_from_sd->op_count + other_sd->op_count;
+    fetch_from_both_srcs = MAP_CONSUME_FROM_BOTH_SRCS && cur->max_op_count >= consume_from_sd->op_count + other_sd->op_count;
   } else {
     // When the uop cache is disabled, the next op to be consumed by the map stage
     // is from the decode stage.
@@ -251,7 +251,7 @@ void update_map_stage(Stage_Data* dec_src_sd, Stage_Data* uopq_src_sd, Flag uopq
   else
       STAT_EVENT(map->proc_id, MAP_STAGE_OFF_PATH);
 
-  // Consume interleaved from both srcs if UOC_IC_SWITCH_FRAG_DISABLE.
+  // Consume interleaved from both srcs if MAP_CONSUME_FROM_BOTH_SRCS.
   // Else, only consume from one src
   if (cur->op_count == 0 && consume_from_sd) {
     int cfsd_ii = 0;  // consume_from_sd idx
@@ -331,13 +331,13 @@ static inline Flag map_fetch_fill_op(Stage_Data* src_sd, int* fetch_idx, Flag sr
   // Those ops that fail the second following if-conditions are fetched from the icache and still need to be decoded,
   // so they are not ready yet.
 
-  // Q: What if `UOC_IC_SWITCH_FRAG_DISABLE` is on?
-  // A: When `UOC_IC_SWITCH_FRAG_DISABLE` is on,
+  // Q: What if `MAP_CONSUME_FROM_BOTH_SRCS` is on?
+  // A: When `MAP_CONSUME_FROM_BOTH_SRCS` is on,
   // we are allowed to fetch from both **decode stage** and **the uop cache source**,
   // where the **the uop cache source** is either the *uop queue* or the *icache stage data* when the uop queue is empty.
   // Still, when the **the uop cache source** is the *icache stage data*,
   // the ops that can be consumed are required to be fetched from the uop cache.
-  // `UOC_IC_SWITCH_FRAG_DISABLE` being on does not change this fact.
+  // `MAP_CONSUME_FROM_BOTH_SRCS` being on does not change this fact.
 
   if (src_is_icache) {
     if (op && !op->fetched_from_uop_cache) {

@@ -205,7 +205,6 @@ void op_pool_setup_op(uns proc_id, Op* op) {
   op->proc_id             = proc_id;
   op->thread_id           = 0;
   op->off_path            = FALSE;  // FIXME: check
-  op->fetch_addr          = 0;
   op->state               = OS_FETCHED;
   op->fu_num              = -1;
   op->issue_cycle         = MAX_CTR;

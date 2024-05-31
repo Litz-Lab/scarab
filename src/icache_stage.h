@@ -32,34 +32,54 @@
 #include "globals/global_types.h"
 #include "libs/cache_lib.h"
 #include "stage_data.h"
+#include "decoupled_frontend.h"
 
 #define IC_ISSUE_WIDTH      ISSUE_WIDTH
-// TODO(peterbraun): Only works with UOP_CACHE_ADDITIONAL_ISSUE_BANDWIDTH=0
-// Add additional ISSUE WIDTH to later stages?
-#define UC_ISSUE_WIDTH      ISSUE_WIDTH + UOP_CACHE_ADDITIONAL_ISSUE_BANDWIDTH
 
 /**************************************************************************************/
 /* Forward Declarations */
 
 struct Inst_Info_struct;
 struct Mem_Req_struct;
-struct Pb_Data_struct;
 
 /**************************************************************************************/
 /* Types */
 
 /* name strings are in debug/debug_print.c */
 typedef enum Icache_State_enum {
-  IC_FETCH,
-  IC_REFETCH,
-  IC_FILL,
-  IC_WAIT_FOR_MISS,
-  IC_WAIT_FOR_REDIRECT,
-  IC_WAIT_FOR_EMPTY_ROB,
-  IC_WAIT_FOR_TIMER,
-  IC_WAIT_FOR_FDIP,
-  IC_WAIT_FOR_RENAME,
+  SERVING_INIT,
+  ICACHE_FINISHED_FT,
+  ICACHE_FINISHED_FT_EXPECTING_NEXT,
+  UOP_CACHE_FINISHED_FT,
+  // icache serves immediately after the lookup
+  ICACHE_LOOKUP_SERVING,
+  ICACHE_NO_LOOKUP_SERVING,
+  ICACHE_RETRY_MEM_REQ,
+  UOP_CACHE_SERVING,
+  WAIT_FOR_MISS,
+  WAIT_FOR_EMPTY_ROB,
+  WAIT_FOR_RENAME
 } Icache_State;
+
+// don't change this order without fixing stats in fetch.stat.def
+typedef enum Break_Reason_enum {
+  BREAK_DONT,          // don't break fetch yet
+  BREAK_RENAME,        // break because of no free renaming physical register
+  BREAK_FT_UNAVAILABLE, // break because the ft queue of the decoupled front-end is empty
+  BREAK_ICACHE_TO_UOP_CACHE_SWITCH,  // break because in the same cycle switched to fetching from uop cache
+  BREAK_ICACHE_MISS_REQ_SUCCESS,     // break because of an icache miss where the mem req succeeds
+  BREAK_ICACHE_MISS_REQ_FAILURE,     // break because of an icache miss where the mem req fails
+  BREAK_WAIT_FOR_MISS,
+  BREAK_UOP_CACHE_READ_LIMIT,        // break because the uop cache has limited read capability
+  BREAK_UOP_CACHE_READ_LIMIT_AND_ISSUE_WIDTH,       // break because the uop cache has limited read capability and the issue width has been reached
+  BREAK_ICACHE_READ_LIMIT,           // break because the uop cache has limited read capability
+  BREAK_ICACHE_READ_LIMIT_AND_ISSUE_WIDTH,          // break because the icache has limited read capability and the issue width has been reached
+  BREAK_ISSUE_WIDTH,   // break because it's reached maximum issue width
+  BREAK_BARRIER,       // break because of a system call or a fetch barrier instruction
+  BREAK_WAIT_FOR_EMPTY_ROB,
+  BREAK_APP_EXIT,      // break because the app exit has been reached
+  BREAK_STALL          // break because the pipeline is stalled
+} Break_Reason;
 
 typedef struct Icache_Stage_struct {
   uns8       proc_id;
@@ -68,21 +88,19 @@ typedef struct Icache_Stage_struct {
   Icache_State state; /* state that the ICACHE is in */
   Icache_State
     next_state; /* state that the ICACHE is going to be in next cycle */
+  Icache_State after_waiting_state; /* state to transit to after waiting */
   uint64_t wait_for_miss_start; /* time when cache miss was observed */
-  Icache_State prev_different_state; /* last state that differed from current */
 
   Inst_Info** line;   /* pointer to current line on a hit */
   Addr        line_addr;       /* address of the last cache line hit */
-  Addr        fetch_addr;      /* address fetched */
-  Addr        next_fetch_addr; /* address to fetch */
+  Addr        fetch_addr;      /* address to fetch or fetching */
+  FT_Info     current_ft_info; /* containing start, length, and termination reason of the current ft */
   Flag        off_path;        /* is the icache fetching on the correct path? */
   Flag back_on_path; /* did a recovery happen to put the machine back on path?
                       */
 
   Counter rdy_cycle; /* cycle that the henry icache will return data (only used
                         in henry model) */
-  Counter timer_cycle; /* cycle that the icache stall timer will have elapsed
-                          and the icache can fetch again */
 
   Cache icache;           /* the cache storage structure (caches Inst_Info *) */
   Cache icache_line_info; /* contains info about the icache lines */
@@ -117,8 +135,6 @@ extern Icache_Stage* ic;
 
 /* vanilla hps model */
 void set_icache_stage(Icache_Stage*);
-void init_icache_trace(void);
-void set_pb_data(Pb_Data*);
 void init_icache_stage(uns8, const char*);
 void reset_icache_stage(void);
 void reset_all_ops_icache_stage(void);

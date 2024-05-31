@@ -229,7 +229,6 @@ struct Op_struct {
   Flag exit;        // is this the last instruction to execute?
   Flag prog_input;  // is this op directly related to an input value of the
                     // program ?
-  Addr          fetch_addr;       // fetch address used to fetch the instruction
   uns           cf_within_fetch;  // branch number within a fetch cycle
   Recovery_Info recovery_info;    // information that will be used to recover a
                                   // mispredict by the op
