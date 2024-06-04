@@ -365,6 +365,7 @@ void update_fdip() {
     //set previous op, only if on path or first off path instruction
     if(FDIP_BP_CONFIDENCE &&
         per_core_cur_op[fdip_proc_id] &&
+	(per_core_cur_op[fdip_proc_id]->op_num != op->op_num) &&
         (!(op->off_path) || !(per_core_conf_info[fdip_proc_id].fdip_off_path_event))){
       per_core_conf_info[fdip_proc_id].prev_op = per_core_cur_op[fdip_proc_id];
       DEBUG(fdip_proc_id, "Set prev_op off_path:%i, op_num:%llu, cf_type:%i\n", per_core_conf_info[fdip_proc_id].prev_op->off_path, per_core_conf_info[fdip_proc_id].prev_op->op_num, per_core_conf_info[fdip_proc_id].prev_op->table_info->cf_type);
@@ -373,6 +374,8 @@ void update_fdip() {
       }
     }
     per_core_cur_op[fdip_proc_id] = op;
+    DEBUG(fdip_proc_id, "Set per_core_cur_op off_path:%i, op_num:%llu, cf_type:%i\n", per_core_cur_op[fdip_proc_id]->off_path, per_core_cur_op[fdip_proc_id]->op_num, per_core_cur_op[fdip_proc_id]->table_info->cf_type);
+
     Addr last_line_addr = per_core_last_line_addr[fdip_proc_id];
     Flag emit_new_prefetch = FALSE;
     if (ftq_entry_per_cycle >= MAX_FTQ_ENTRY_CYC && ops_per_cycle >= std::max(UC_ISSUE_WIDTH, IC_ISSUE_WIDTH)) {
@@ -477,9 +480,9 @@ void update_fdip() {
       Flag mem_req_buf_full = FALSE;
       if (emit_new_prefetch && !line && !mem_req && !mem_can_allocate_req_buffer(fdip_proc_id, mem_type, FALSE)) {
         mem_req_buf_full = TRUE;
-        // should keep running ahead without breaking the loop by failing to emit a prefetch when FTQ has only one FT where the backend fetches the FT soon
+        // should keep running ahead without breaking the loop by failing to emit a prefetch when FDIP is only one FTQ entry ahead where the backend fetches the FT soon
         // freeze FDIP when mem_req buffer hits the limit. This should rarely happends if mem_req_buffer_entries and ramulator_readq_entries are big enough.
-        if (FDIP_FREEZE_AT_MEM_BUF_LIMIT && decoupled_fe_ftq_num_fts() != 1) {
+        if (FDIP_FREEZE_AT_MEM_BUF_LIMIT && decoupled_fe_ftq_iter_ft_offset(iter) > 1) {
           DEBUG(fdip_proc_id, "Break due to full mem_req buf\n");
           break_reason = BR_FULL_MEM_REQ_BUF;
           break;
@@ -603,7 +606,7 @@ Flag fdip_off_path(uns proc_id) {
 
 Flag fdip_conf_off_path(uns proc_id) {
   if (FDIP_BP_CONFIDENCE) {
-    if (per_core_low_confidence_cnt[fdip_proc_id] <= FDIP_OFF_PATH_THRESHOLD)
+    if (per_core_low_confidence_cnt[fdip_proc_id] < FDIP_OFF_PATH_THRESHOLD)
       return FALSE;
     else
       return TRUE;
@@ -1823,7 +1826,7 @@ void log_stats_bp_conf() {
   if (per_core_low_confidence_cnt[fdip_proc_id] < FDIP_OFF_PATH_THRESHOLD) {
     if (fdip_off_path(fdip_proc_id)) {
       if (!conf_info->fdip_off_conf_on_event) {
-        DEBUG(fdip_proc_id, "prev_op op_num: %llu, cf_type: %i\n", conf_info->prev_op->op_num, conf_info->prev_op->table_info->cf_type);
+        DEBUG(fdip_proc_id, "prev_op op_num: %llu, cf_type: %i, cur_op op_num: %llu, cf_type: %i\n", conf_info->prev_op->op_num, conf_info->prev_op->table_info->cf_type, per_core_cur_op[fdip_proc_id]->op_num, per_core_cur_op[fdip_proc_id]->table_info->cf_type);
         ASSERT(fdip_proc_id, conf_info->prev_op->table_info->cf_type); // must be a cf as the last on-path op
         conf_info->fdip_off_conf_on_event = true;
         STAT_EVENT(fdip_proc_id, FDIP_OFF_CONF_ON_NUM_EVENTS);
@@ -1933,8 +1936,4 @@ void add_evict_seq(uns proc_id, Addr line_addr) {
       it2->second.push_back(std::make_pair('e',cycle_count));
     }
   }
-}
-
-void fdip_set_cur_op(uns proc_id, Op* op) {
-  per_core_cur_op[proc_id] = op;
 }
