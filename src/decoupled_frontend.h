@@ -97,6 +97,8 @@ extern "C" {
   uint64_t decoupled_fe_ftq_iter_ft_offset(decoupled_fe_iter* iter);
   uint64_t decoupled_fe_ftq_num_ops();
   uint64_t decoupled_fe_ftq_num_fts();
+  void decoupled_fe_set_ftq_num(int proc_id, uint64_t ftq_ft_num);
+  uint64_t decoupled_fe_get_ftq_num(int proc_id);
 #ifdef __cplusplus
 }
 #endif

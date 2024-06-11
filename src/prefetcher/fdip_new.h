@@ -56,6 +56,7 @@ extern "C" {
   void default_conf_update(Op * op);
   void log_stats_bp_conf();
   void log_stats_bp_conf_emitted();
+  void uftq_set_ftq_ft_num(uns proc_id);
 
   
 #ifdef __cplusplus
@@ -105,6 +106,8 @@ typedef struct Utility_Timeliness_Info_struct {
   Counter icache_prefetch_hits;
   double timeliness_ratio;
   Flag adjust;
+  uint64_t qdaur;
+  uint64_t qdatr;
 } Utility_Timeliness_Info;
 
 //metadata for fdip confidence

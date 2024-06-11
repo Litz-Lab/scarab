@@ -204,7 +204,7 @@ void init_fdip(uns proc_id) {
   per_core_last_line_addr[proc_id] = 0;
   per_core_warmed_up[proc_id] = FALSE;
   if (FDIP_ADJUSTABLE_FTQ)
-    per_core_utility_timeliness_info[proc_id] = {0, 0, 0.0, 0, 0, 0.0, FALSE};
+    per_core_utility_timeliness_info[proc_id] = {0, 0, 0.0, 0, 0, 0.0, FALSE, 0, 0};
   if (FDIP_BP_CONFIDENCE) {
     per_core_cnt_btb_miss[proc_id] = 0;
     per_core_btb_miss_rate[proc_id] = 0.0;
@@ -322,6 +322,9 @@ void recover_fdip() {
     per_core_conf_info[fdip_proc_id].fdip_off_conf_on_event = false;
     per_core_conf_info[fdip_proc_id].fdip_off_path_event = false;
   }
+
+  if (FDIP_ADJUSTABLE_FTQ)
+    uftq_set_ftq_ft_num(fdip_proc_id);
 }
 
 static inline void bloom_clear(uns proc_id) {
@@ -1936,4 +1939,111 @@ void add_evict_seq(uns proc_id, Addr line_addr) {
       it2->second.push_back(std::make_pair('e',cycle_count));
     }
   }
+}
+
+/* Returns a new computed FTQ depth based on the current utility ratio or/and timeliness ratio of
+   FDIP prefetches. Three different modes based on FDIP_ADJUSTABLE_FTQ (1: AUR, 2: ATR, 3: AURATR) */
+void uftq_set_ftq_ft_num(uns proc_id) {
+  uint64_t cur_ftq_ft_num = decoupled_fe_get_ftq_num(proc_id);
+  if (!FDIP_ADJUSTABLE_FTQ || !per_core_utility_timeliness_info[proc_id].adjust)
+    return;
+
+  uint64_t new_ftq_ft_num = cur_ftq_ft_num;
+  double cur_utility_ratio = per_core_utility_timeliness_info[proc_id].utility_ratio;
+  double cur_timeliness_ratio = per_core_utility_timeliness_info[proc_id].timeliness_ratio;
+  uint64_t qdaur = per_core_utility_timeliness_info[proc_id].qdaur;
+  uint64_t qdatr = per_core_utility_timeliness_info[proc_id].qdatr;
+  if (FDIP_ADJUSTABLE_FTQ == 1) { // utility-based adjustment UFTQ-AUR
+    DEBUG(proc_id, "Current utility ratio : %lf, current FTQ ft num : %lu\n", cur_utility_ratio, cur_ftq_ft_num);
+    if (cur_utility_ratio < UTILITY_RATIO_THRESHOLD) {
+      new_ftq_ft_num -= std::round(cur_ftq_ft_num * (UTILITY_RATIO_THRESHOLD - cur_utility_ratio));
+      if (new_ftq_ft_num < UFTQ_MIN_FTQ_BLOCK_NUM)
+        new_ftq_ft_num = UFTQ_MIN_FTQ_BLOCK_NUM;
+    } else if (cur_utility_ratio > UTILITY_RATIO_THRESHOLD) {
+      new_ftq_ft_num += std::round(cur_ftq_ft_num * (cur_utility_ratio - UTILITY_RATIO_THRESHOLD));
+      if (new_ftq_ft_num > UFTQ_MAX_FTQ_BLOCK_NUM)
+        new_ftq_ft_num = UFTQ_MAX_FTQ_BLOCK_NUM;
+    }
+    DEBUG(proc_id, "New FTQ ft num : %lu\n", new_ftq_ft_num);
+    per_core_utility_timeliness_info[proc_id].adjust = FALSE;
+  } else if (FDIP_ADJUSTABLE_FTQ == 2) { // timeliness-based adjustment UFTQ-ATR
+    DEBUG(proc_id, "Current timeliness ratio : %lf, current FTQ ft num : %lu\n", cur_timeliness_ratio, cur_ftq_ft_num);
+    if (cur_timeliness_ratio < TIMELINESS_RATIO_THRESHOLD) {
+      new_ftq_ft_num += std::round(cur_ftq_ft_num * (TIMELINESS_RATIO_THRESHOLD - cur_timeliness_ratio));
+      if (new_ftq_ft_num > UFTQ_MAX_FTQ_BLOCK_NUM)
+        new_ftq_ft_num = UFTQ_MAX_FTQ_BLOCK_NUM;
+    } else if (cur_timeliness_ratio > TIMELINESS_RATIO_THRESHOLD) {
+      new_ftq_ft_num -= std::round(cur_ftq_ft_num * (cur_timeliness_ratio - TIMELINESS_RATIO_THRESHOLD));
+      if (new_ftq_ft_num < UFTQ_MIN_FTQ_BLOCK_NUM)
+        new_ftq_ft_num = UFTQ_MIN_FTQ_BLOCK_NUM;
+    }
+    DEBUG(proc_id, "New FTQ ft num : %lu\n", new_ftq_ft_num);
+    per_core_utility_timeliness_info[proc_id].adjust = FALSE;
+  } else if (FDIP_ADJUSTABLE_FTQ == 3) { // combined method UFTQ-ATR-AUR
+    DEBUG(proc_id, "Current utility ratio : %lf, timeliness ratio : %lf, current FTQ ft num : %lu\n", cur_utility_ratio, cur_timeliness_ratio, cur_ftq_ft_num);
+    if (!qdaur) { // First, find QDAUR
+      if (cur_utility_ratio < UTILITY_RATIO_THRESHOLD) {
+        new_ftq_ft_num -= std::round(cur_ftq_ft_num * (UTILITY_RATIO_THRESHOLD - cur_utility_ratio));
+        if (new_ftq_ft_num < UFTQ_MIN_FTQ_BLOCK_NUM)
+          new_ftq_ft_num = UFTQ_MIN_FTQ_BLOCK_NUM;
+      } else if (cur_utility_ratio > UTILITY_RATIO_THRESHOLD) {
+        new_ftq_ft_num += std::round(cur_ftq_ft_num * (cur_utility_ratio - UTILITY_RATIO_THRESHOLD));
+        if (new_ftq_ft_num > UFTQ_MAX_FTQ_BLOCK_NUM)
+          new_ftq_ft_num = UFTQ_MAX_FTQ_BLOCK_NUM;
+      }
+      if (new_ftq_ft_num == cur_ftq_ft_num) // set qdaur when ftq size plateaus
+        per_core_utility_timeliness_info[proc_id].qdaur = new_ftq_ft_num;
+    } else if (!qdatr) { // Then find QDATR after QDAUR found
+      if (cur_timeliness_ratio < TIMELINESS_RATIO_THRESHOLD) {
+        new_ftq_ft_num += std::round(cur_ftq_ft_num * (TIMELINESS_RATIO_THRESHOLD - cur_timeliness_ratio));
+        if (new_ftq_ft_num > UFTQ_MAX_FTQ_BLOCK_NUM)
+          new_ftq_ft_num = UFTQ_MAX_FTQ_BLOCK_NUM;
+      } else if (cur_timeliness_ratio > TIMELINESS_RATIO_THRESHOLD) {
+        new_ftq_ft_num -= std::round(cur_ftq_ft_num * (cur_timeliness_ratio - TIMELINESS_RATIO_THRESHOLD));
+        if (new_ftq_ft_num < UFTQ_MIN_FTQ_BLOCK_NUM)
+          new_ftq_ft_num = UFTQ_MIN_FTQ_BLOCK_NUM;
+      }
+      if (new_ftq_ft_num == cur_ftq_ft_num) // set qdatr when ftq size plateaus
+        per_core_utility_timeliness_info[proc_id].qdatr = new_ftq_ft_num;
+    } else {
+      new_ftq_ft_num = std::round(-0.34*qdaur - 0.64*qdatr + 0.008*qdaur*qdaur + 0.01*qdatr*qdatr + 0.008*qdaur*qdatr);
+      if (new_ftq_ft_num < UFTQ_MIN_FTQ_BLOCK_NUM)
+        new_ftq_ft_num = UFTQ_MIN_FTQ_BLOCK_NUM;
+      else if (new_ftq_ft_num > UFTQ_MAX_FTQ_BLOCK_NUM)
+        new_ftq_ft_num = UFTQ_MAX_FTQ_BLOCK_NUM;
+
+      // update qdaur and qdatr for the future use
+      if (cur_utility_ratio < UTILITY_RATIO_THRESHOLD) {
+        qdaur -= std::round(qdaur * (UTILITY_RATIO_THRESHOLD - cur_utility_ratio));
+        if (qdaur < UFTQ_MIN_FTQ_BLOCK_NUM)
+          qdaur = UFTQ_MIN_FTQ_BLOCK_NUM;
+      } else if (cur_utility_ratio > UTILITY_RATIO_THRESHOLD) {
+        qdaur += std::round(qdaur * (cur_utility_ratio - UTILITY_RATIO_THRESHOLD));
+        if (qdaur > UFTQ_MAX_FTQ_BLOCK_NUM)
+          qdaur = UFTQ_MAX_FTQ_BLOCK_NUM;
+      }
+      if (cur_timeliness_ratio < TIMELINESS_RATIO_THRESHOLD) {
+        qdatr += std::round(qdatr * (TIMELINESS_RATIO_THRESHOLD - cur_timeliness_ratio));
+        if (qdatr > UFTQ_MAX_FTQ_BLOCK_NUM)
+          qdatr = UFTQ_MAX_FTQ_BLOCK_NUM;
+      } else if (cur_timeliness_ratio > TIMELINESS_RATIO_THRESHOLD) {
+        qdatr -= std::round(qdatr * (cur_timeliness_ratio - TIMELINESS_RATIO_THRESHOLD));
+        if (qdatr < UFTQ_MIN_FTQ_BLOCK_NUM)
+          qdatr = UFTQ_MIN_FTQ_BLOCK_NUM;
+      }
+
+      per_core_utility_timeliness_info[proc_id].qdaur = qdaur;
+      per_core_utility_timeliness_info[proc_id].qdatr = qdatr;
+    }
+    DEBUG(proc_id, "New FTQ ft num : %lu\n", new_ftq_ft_num);
+    per_core_utility_timeliness_info[proc_id].adjust = FALSE;
+  }
+
+  if (cur_ftq_ft_num == new_ftq_ft_num)
+    STAT_EVENT(proc_id, FDIP_UFTQ_STAY_SAME_FTQ_NUM);
+  else if (cur_ftq_ft_num > new_ftq_ft_num)
+    STAT_EVENT(proc_id, FDIP_UFTQ_DEC_FTQ_NUM);
+  else
+    STAT_EVENT(proc_id, FDIP_UFTQ_INC_FTQ_NUM);
+  return decoupled_fe_set_ftq_num(proc_id, new_ftq_ft_num);
 }
