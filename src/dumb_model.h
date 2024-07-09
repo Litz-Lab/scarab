@@ -42,7 +42,7 @@ typedef struct Dumb_Model_struct {
 /**************************************************************************************/
 /* Global vars */
 
-Dumb_Model        dumb_model;
+// Dumb_Model        dumb_model;
 extern Dumb_Model dumb_model;
 
 /**************************************************************************************/
