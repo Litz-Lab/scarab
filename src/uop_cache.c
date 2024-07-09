@@ -52,7 +52,7 @@ static inline Flag in_uop_cache_search(Addr search_addr, Flag update_repl, Flag 
 /**************************************************************************************/
 /* Global Variables */
 
-uns8 proc_id;
+static uns8 proc_id;
 static Flag UOP_CACHE_ON;
 
 // uop trace/bbl accumulation

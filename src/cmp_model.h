@@ -73,7 +73,7 @@ typedef struct Cmp_Model_struct {
 /**************************************************************************************/
 /* Global vars */
 
-Cmp_Model        cmp_model;
+// Cmp_Model        cmp_model;
 extern Cmp_Model cmp_model;
 
 /**************************************************************************************/

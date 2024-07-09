@@ -57,6 +57,7 @@
 #include "decoupled_frontend.h"
 
 Flag perf_pred_started = FALSE;
+Cmp_Model        cmp_model;
 
 /**************************************************************************************/
 /* Static prototypes */

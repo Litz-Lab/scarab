@@ -12,6 +12,7 @@
 #include <map>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 
 #include "frontend/pt_memtrace/pt_fe.h"
 #include "frontend/frontend_intf.h"
@@ -167,8 +168,9 @@ void ext_trace_fetch_op(uns proc_id, Op* op) {
     if (!off_path_mode[proc_id]) {
 
       int success = false;
-      if (FRONTEND == FE_PT)
+      if (FRONTEND == FE_PT) {
         success = pt_trace_read(proc_id, &next_onpath_pi[proc_id]);
+      }
       else if (FRONTEND == FE_MEMTRACE)
         success = memtrace_trace_read(proc_id, &next_onpath_pi[proc_id]);
       if(!success) {
@@ -258,12 +260,14 @@ void ext_trace_init() {
   memset(next_onpath_pi, 0, sizeof(next_onpath_pi));
 
   if (FRONTEND == FE_PT) {
+    printf("[ext_trace_init] Initializing pt frontend\n");
     pt_init();
     for(uns proc_id = 0; proc_id < NUM_CORES; proc_id++) {
       pt_trace_read(proc_id, &next_onpath_pi[proc_id]);
     }
   }
   else if (FRONTEND == FE_MEMTRACE) {
+    printf("[ext_trace_init] Initializing memtrace frontend\n");
     memtrace_init();
     for(uns proc_id = 0; proc_id < NUM_CORES; proc_id++) {
       memtrace_trace_read(proc_id, &next_onpath_pi[proc_id]);

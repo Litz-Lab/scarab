@@ -43,7 +43,7 @@
 #include "debug/debug.param.h"
 #include "general.param.h"
 #include "memory/memory.param.h"
-
+Dumb_Model        dumb_model;
 
 /**************************************************************************************/
 /* Types */
