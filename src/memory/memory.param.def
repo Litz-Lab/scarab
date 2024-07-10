@@ -114,9 +114,6 @@ DEF_PARAM(icache_repl, ICACHE_REPL, uns, uns, 0, )
 /* Uop Cache */
 DEF_PARAM(uop_cache_enable, UOP_CACHE_ENABLE, uns, uns, 1,)
 DEF_PARAM(always_lookup_icache, ALWAYS_LOOKUP_ICACHE, uns, uns, 0,)
-DEF_PARAM(  oracle_perfect_uop_cache       , ORACLE_PERFECT_UOP_CACHE        , Flag   , Flag    , FALSE                  ,       )
-DEF_PARAM(  inf_size_uop_cache             , INF_SIZE_UOP_CACHE              , Flag   , Flag    , FALSE                  ,       )
-DEF_PARAM(  inf_size_uop_cache_pw_size_lim , INF_SIZE_UOP_CACHE_PW_SIZE_LIM  , uns    , uns     , 0                      ,       )
 DEF_PARAM(uop_cache_insert_only_onpath, UOP_CACHE_INSERT_ONLY_ONPATH, Flag, Flag, FALSE,)
 // Uop cache size in its uop capacity = ISSUE_WIDTH * UOP_CACHE_LINES = 6 * 384 = 2304 uops
 DEF_PARAM(  uop_cache_lines                , UOP_CACHE_LINES                 , uns    , uns     , 384                    ,       )
@@ -131,9 +128,6 @@ DEF_PARAM(priority_line_stickiness_percent, PRIORITY_LINE_STICKINESS_PERCENT, in
 DEF_PARAM(pw_priority_list_filepath, PW_PRIORITY_LIST_FILEPATH, char*, string, "pw_priority_list.csv", )
 DEF_PARAM(num_priority_pws, NUM_PRIORITY_PWS, uns, uns, 10,)
 DEF_PARAM(prioritize_pws_after_first_sticky_until_backend_stall, PRIORITIZE_PWS_AFTER_FIRST_STICKY_UNTIL_BACKEND_STALL, Flag, Flag, FALSE,)
-// If set, PWs are only inserted after a resteer until the uop queue fills.
-// The UOC becomes a cache only for ops that follow a resteer.
-DEF_PARAM(uop_cache_insert_only_after_resteer_uop_queue_not_full, UOP_CACHE_INSERT_ONLY_AFTER_RESTEER_UOP_QUEUE_NOT_FULL, Flag, Flag, FALSE,)
 DEF_PARAM(no_repl_after_queue_size, NO_REPL_AFTER_QUEUE_SIZE, uns, uns, 0,)
 /* FDIP Confidence Cache */
 // The cache line size is fixed to ICACHE_LINE_SIZE (64 by default). The number of entries in a FDIP UC is FDIP_UC_SIZE / ICACHE_LINE_SIZE. To have 16K (16384) entries, FDIP_UC_SIZE should be 1048576.

@@ -148,14 +148,13 @@ void bp_sched_recovery(Bp_Recovery_Info* bp_recovery_info, Op* op,
      op->op_num <= bp_recovery_info->recovery_op_num) {
     const Addr next_fetch_addr = op->oracle_info.npc;
     ASSERT(0, op->oracle_info.npc);
-    Flag uc_hit = in_uop_cache(next_fetch_addr, FALSE, op->off_path);
     const uns latency = late_bp_recovery ? LATE_BP_LATENCY : 1;
     DEBUG(
       bp_recovery_info->proc_id,
       "Recovery signaled for op_num:%s @ 0x%s  next_fetch:0x%s offpath:%d\n",
       unsstr64(op->op_num), hexstr64s(op->inst_info->addr),
       hexstr64s(next_fetch_addr), op->off_path);
-    inc_bstat_miss(op, uc_hit);
+    inc_bstat_miss(op);
     ASSERT(op->proc_id, !op->oracle_info.recovery_sch);
     op->oracle_info.recovery_sch          = TRUE;
     bp_recovery_info->recovery_cycle      = cycle + latency;
@@ -198,28 +197,12 @@ void inc_bstat_fetched(Op* op) {
     bstat->cf_type = op->table_info->cf_type;
   }
 
-  if (!op->off_path) {
-    if (in_uop_cache(op->oracle_info.npc, FALSE, op->off_path)) {
-      bstat->bpu_hit_uc_hit_on_path += 1;
-    }else {
-      bstat->bpu_hit_uc_miss_on_path += 1;
-      if (!in_icache(op->oracle_info.npc)) bstat->bpu_hit_uc_ic_miss_on_path += 1;
-    }
-  }
-  else {
-    if (in_uop_cache(op->oracle_info.npc, FALSE, op->off_path)) {
-      bstat->bpu_hit_uc_hit_off_path += 1;
-    }else {
-      bstat->bpu_hit_uc_miss_off_path += 1;
-      if (!in_icache(op->oracle_info.npc)) bstat->bpu_hit_uc_ic_miss_off_path += 1;
-    }
-  }
   // target if taken
   if (op->oracle_info.pred == TAKEN && !(op->oracle_info.recover_at_exec || op->oracle_info.recover_at_decode))
     bstat->target = op->oracle_info.npc;
 }
 
-void inc_bstat_miss(Op* op, Flag uc_hit) {
+void inc_bstat_miss(Op* op) {
   int64 key = convert_to_cmp_addr(op->table_info->cf_type, op->inst_info->addr);
   Per_Branch_Stat* bstat = (Per_Branch_Stat*) hash_table_access(&per_branch_stat, key);
   ASSERT(bp_recovery_info->proc_id, bstat);
@@ -239,34 +222,8 @@ void inc_bstat_miss(Op* op, Flag uc_hit) {
     return;
   }
 
-  const Flag in_ic = in_icache(op->oracle_info.npc);
-
   if (op->fetched_from_uop_cache && op->oracle_info.recover_at_decode)
     STAT_EVENT(bp_recovery_info->proc_id, RECOVER_AT_DECODE_BR_FROM_UOC);
-
-  if (uc_hit) {
-    if (mispred)        bstat->mispred_uc_hit += 1;
-    else if (misfetch)  bstat->misfetch_uc_hit += 1;
-    else if (btb_miss)  bstat->btb_miss_uc_hit += 1;
-    else                bstat->other_recovery_uc_hit += 1;
-    STAT_EVENT(bp_recovery_info->proc_id, RECOVERED_FROM_UOC);
-  } else {
-    if (mispred) {
-      bstat->mispred_uc_miss += 1;
-      if (!in_ic) bstat->mispred_uc_ic_miss += 1;
-    } else if (misfetch) {
-      bstat->misfetch_uc_miss += 1;
-      if (!in_ic) bstat->misfetch_uc_ic_miss += 1;
-    } else if (btb_miss){
-      bstat->btb_miss_uc_miss += 1;
-      if (!in_ic) bstat->btb_miss_uc_ic_miss += 1;
-    }
-    else {
-      bstat->other_recovery_uc_miss += 1;
-      if (!in_ic) bstat->other_recovery_uc_ic_miss += 1;
-    }
-    bstat->recover_redirect_extra_fetch_latency += ICACHE_LATENCY - UOP_CACHE_LATENCY;
-  }
 }
 
 /******************************************************************************/
@@ -280,8 +237,7 @@ void bp_sched_redirect(Bp_Recovery_Info* bp_recovery_info, Op* op,
     DEBUG(bp_recovery_info->proc_id, "Redirect signaled for op_num:%s @ 0x%s\n",
           unsstr64(op->op_num), hexstr64s(op->inst_info->addr));
 
-    Flag uc_hit = in_uop_cache(op->oracle_info.npc, FALSE, op->off_path);
-    inc_bstat_miss(op, uc_hit); // shouldn't double count if both btb miss and predictor wrong.
+    inc_bstat_miss(op); // shouldn't double count if both btb miss and predictor wrong.
     bp_recovery_info->redirect_cycle = cycle + 1 +
                                        (op->table_info->cf_type == CF_SYS ?
                                           EXTRA_CALLSYS_CYCLES :

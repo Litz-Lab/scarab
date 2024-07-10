@@ -173,8 +173,4 @@ void update_uop_queue_fill_time_stat() {
       *new_unique_pw_entry = unique_pws_since_recovery;
     }
   }
-  if (UOP_CACHE_INSERT_ONLY_AFTER_RESTEER_UOP_QUEUE_NOT_FULL
-      && q.size() == UOP_QUEUE_LENGTH) {
-    set_uop_cache_insert_enable(FALSE);
-  }
 }

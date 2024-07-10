@@ -34,6 +34,7 @@
 #include "inst_info.h"
 #include "op_info.h"
 #include "table_info.h"
+#include "ft_info.h"
 
 
 /**************************************************************************************/
@@ -97,25 +98,6 @@ typedef struct Per_Branch_Stat_struct {
   Addr addr;
   Cf_Type cf_type;
   Addr target;
-  int bpu_hit_uc_hit_on_path;
-  int bpu_hit_uc_miss_on_path;
-  int bpu_hit_uc_ic_miss_on_path;
-  int bpu_hit_uc_hit_off_path;
-  int bpu_hit_uc_miss_off_path;
-  int bpu_hit_uc_ic_miss_off_path;
-  int mispred_uc_hit;
-  int mispred_uc_miss;
-  int mispred_uc_ic_miss;   // mispred that miss in both uc and ic
-  int misfetch_uc_hit;
-  int misfetch_uc_miss;
-  int misfetch_uc_ic_miss;
-  int btb_miss_uc_hit;
-  int btb_miss_uc_miss;
-  int btb_miss_uc_ic_miss;
-  int other_recovery_uc_hit;
-  int other_recovery_uc_miss;
-  int other_recovery_uc_ic_miss;
-  int recover_redirect_extra_fetch_latency; // extra stall cycles due to target not being in UC
 } Per_Branch_Stat;
 
 /*------------------------------------------------------------------------------------*/
@@ -324,6 +306,7 @@ struct Op_struct {
   Flag redirect_scheduled;
   // }}}
 
+  FT_Info ft_info;  // FT the op associated with
   // {{{ uop cache
   Flag fetched_from_uop_cache;
   // }}}
@@ -334,18 +317,6 @@ struct Op_struct {
   // }}}
 };
 // }}}
-
-// Contains the first and last addresses in the prediction window
-typedef struct Uop_Cache_Data_struct {
-  Addr first;
-  Addr last;
-  Counter n_uops;
-  Counter last_op_num;
-  Flag prefetch;
-  Counter used;
-  Flag first_op_offpath;
-  Flag priority;
-} Uop_Cache_Data;
 
 /**************************************************************************************/
 

@@ -84,6 +84,7 @@ DEF_PARAM(  debug_thread,          DEBUG_THREAD,          Flag,  Flag,  FALSE,  
 DEF_PARAM(  debug_decoupled_fe,    DEBUG_DECOUPLED_FE,    Flag,  Flag,  FALSE,  )
 DEF_PARAM(  debug_icache_stage,    DEBUG_ICACHE_STAGE,    Flag,  Flag,  FALSE,  )
 DEF_PARAM(  debug_decode_stage,    DEBUG_DECODE_STAGE,    Flag,  Flag,  FALSE,  )
+DEF_PARAM(  debug_cpp_cache,       DEBUG_CPP_CACHE,       Flag,  Flag,  FALSE,  )
 DEF_PARAM(  debug_uop_cache,       DEBUG_UOP_CACHE,       Flag,  Flag,  FALSE,  )
 DEF_PARAM(  debug_uop_queue_stage, DEBUG_UOP_QUEUE_STAGE, Flag,  Flag,  FALSE,  )
 DEF_PARAM(  debug_map_stage,       DEBUG_MAP_STAGE,       Flag,  Flag,  FALSE,  )

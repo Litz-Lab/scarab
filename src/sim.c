@@ -281,17 +281,10 @@ static inline void check_heartbeat(uns8 proc_id, Flag final) {
                   unsstr64(sim_time), cum_ipc, cum_ipc, cum_khz);
           FILE* fp = fopen("per_branch_stats.csv", "w");
           Per_Branch_Stat** entries = (Per_Branch_Stat**) hash_table_flatten(&per_branch_stat, NULL);
-          fprintf(fp, "cf_type,addr,target,bpu_hit_uc_hit,bpu_hit_uc_miss,mispred_uc_hit,"
-                  "mispred_uc_miss,misfetch_uc_hit,misfetch_uc_miss,btb_miss_uc_hit,"
-                  "btb_miss_uc_miss,other_recovery_uc_hit,other_recovery_uc_miss,"
-                  "recover_redirect_extra_fetch_latency\n");
+          fprintf(fp, "cf_type,addr,target\n");
           for (int i=0; i<per_branch_stat.count; i++) {
             Per_Branch_Stat* entry = entries[i];
-            fprintf(fp, "%i,%llx,%llx,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i\n", entry->cf_type, entry->addr, 
-              entry->target, entry->bpu_hit_uc_hit_on_path, entry->bpu_hit_uc_miss_on_path, entry->mispred_uc_hit,
-              entry->mispred_uc_miss, entry->misfetch_uc_hit, entry->misfetch_uc_miss, 
-              entry->btb_miss_uc_hit, entry->btb_miss_uc_miss, entry->other_recovery_uc_hit,
-              entry->other_recovery_uc_miss, entry->recover_redirect_extra_fetch_latency);
+            fprintf(fp, "%i,%llx,%llx\n", entry->cf_type, entry->addr, entry->target);
           }
           free(entries);
 

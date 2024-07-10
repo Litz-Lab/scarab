@@ -64,23 +64,6 @@ extern "C" {
     uint64_t flattened_op_pos;
   };
 
-  typedef enum FT_Ended_By_enum {
-   FT_NOT_ENDED,
-   FT_ICACHE_LINE_BOUNDARY,
-   FT_TAKEN_BRANCH,
-   FT_BAR_FETCH,
-   FT_APP_EXIT
-  } FT_Ended_By;
-
-  typedef struct FT_Info_struct {
-    // the PC of the first inst in this FT
-    Addr start;
-    // the FT size in bytes, counting from the first byte of the first inst to the last byte of the last inst
-    Addr length;
-    // the termination of the FT
-    FT_Ended_By ended_by;
-  } FT_Info;
-
   // Simulator API
   void alloc_mem_decoupled_fe(uns numProcs);
   void init_decoupled_fe(uns proc_id, const char*);

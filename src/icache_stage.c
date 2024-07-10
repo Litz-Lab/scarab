@@ -220,6 +220,8 @@ void recover_icache_stage() {
     }
   }
   op_count[ic->proc_id] = bp_recovery_info->recovery_op_num + 1;
+
+  uop_cache_clear_lookup_buffer();
 }
 
 
@@ -312,7 +314,7 @@ void prefetcher_update_on_icache_access(Flag icache_hit) {
 void icache_hit_events(Flag uop_cache_hit) {
   DEBUG(ic->proc_id, "Cache hit on op_num:%s @ 0x%s line_addr 0x%s\n",
         unsstr64(op_count[ic->proc_id]), hexstr64s(ic->fetch_addr), hexstr64s(ic->fetch_addr & ~0x3F));
-  
+
   if (ALWAYS_LOOKUP_ICACHE) {
     if (!ic->off_path) {
       STAT_EVENT(ic->proc_id, ICACHE_HIT_UOP_CACHE_MISS_ON_PATH + uop_cache_hit);
@@ -468,6 +470,9 @@ void update_icache_stage() {
               || ic->state == ICACHE_FINISHED_FT
               || ic->state == ICACHE_FINISHED_FT_EXPECTING_NEXT
               || ic->state == UOP_CACHE_FINISHED_FT) {
+      if (ic->state != ICACHE_FINISHED_FT_EXPECTING_NEXT) {
+        ASSERT(ic->proc_id, !ic->sd.op_count);
+      }
       ASSERT(ic->proc_id, !decoupled_fe_current_ft_can_fetch_op(ic->proc_id));
       if (!decoupled_fe_can_fetch_ft(ic->proc_id)) {
         // if this happened, the app exit should have been seen
@@ -478,11 +483,11 @@ void update_icache_stage() {
         ic->current_ft_info = decoupled_fe_fetch_ft(ic->proc_id);
 
         // set the current fetch address
-        ic->fetch_addr = ic->current_ft_info.start;
+        ic->fetch_addr = ic->current_ft_info.static_info.start;
         ASSERT_PROC_ID_IN_ADDR(ic->proc_id, ic->fetch_addr);
 
         // look up uop cache
-        Flag ft_in_uop_cache = (uop_cache_lookup_line(ic->fetch_addr, ic->current_ft_info.start, ic->current_ft_info.length, FALSE) != NULL);
+        Flag ft_in_uop_cache = uop_cache_lookup_ft_and_fill_lookup_buffer(ic->current_ft_info, ic->off_path);
 
         // look up icache if uop miss (inlcuding when uop cache disabled) or if requested
         if (!ft_in_uop_cache || ALWAYS_LOOKUP_ICACHE) {
@@ -584,20 +589,21 @@ void update_icache_stage() {
         ic->next_state = ICACHE_RETRY_MEM_REQ;
       }
     } else if (ic->state == UOP_CACHE_SERVING) {
-      Uop_Cache_Line_Data* uop_cache_line = uop_cache_lookup_line(ic->fetch_addr, ic->current_ft_info.start, ic->current_ft_info.length, TRUE);
-      ASSERT(ic->proc_id, uop_cache_line);
+      Uop_Cache_Data* uop_cache_line = uop_cache_get_line_from_lookup_buffer();
+      // the line must be valid
+      ASSERT(ic->proc_id, uop_cache_line->n_uops);
 
       ASSERT(ic->proc_id, !ic->sd.op_count);
-      ASSERT(ic->proc_id, uop_cache_line->num_uops <= ISSUE_WIDTH);
-      Flag ft_has_ended = decoupled_fe_fill_icache_stage_data(ic->proc_id, uop_cache_line->num_uops, &ic->sd);
-      ASSERT(ic->proc_id, ic->sd.op_count && ic->sd.op_count == uop_cache_line->num_uops);
+      ASSERT(ic->proc_id, uop_cache_line->n_uops <= ISSUE_WIDTH);
+      Flag ft_has_ended = decoupled_fe_fill_icache_stage_data(ic->proc_id, uop_cache_line->n_uops, &ic->sd);
+      ASSERT(ic->proc_id, ic->sd.op_count && ic->sd.op_count == uop_cache_line->n_uops);
 
       if (ft_has_ended) {
         ASSERT(ic->proc_id, !decoupled_fe_current_ft_can_fetch_op(ic->proc_id));
         // sanity check that the uop cache is in sync
-        ASSERT(ic->proc_id, uop_cache_line->end);
+        ASSERT(ic->proc_id, uop_cache_line->end_of_ft);
         ic->next_state = UOP_CACHE_FINISHED_FT;
-        switch(ic->current_ft_info.ended_by) {
+        switch(ic->current_ft_info.dynamic_info.ended_by) {
           case FT_ICACHE_LINE_BOUNDARY:
           case FT_TAKEN_BRANCH:
             if (ic->sd.op_count < ISSUE_WIDTH) {
@@ -618,9 +624,10 @@ void update_icache_stage() {
           default:
             ASSERT(ic->proc_id, 0);
         }
+        uop_cache_clear_lookup_buffer();
       } else {
         ASSERT(ic->proc_id, decoupled_fe_current_ft_can_fetch_op(ic->proc_id));
-        ASSERT(ic->proc_id, !uop_cache_line->end);
+        ASSERT(ic->proc_id, !uop_cache_line->end_of_ft);
         // the current uop cache assumes that uop cache line op num equals ISSUE_WIDTH
         ASSERT(ic->proc_id, ic->sd.op_count == ISSUE_WIDTH);
         // next_fetch_addr is usually updated when an FT is fetched.
@@ -633,7 +640,7 @@ void update_icache_stage() {
       }
 
       // mark all ops as fetched from the uop cache
-      for(uns ii = 0; ii < STAGE_MAX_OP_COUNT; ii++) {
+      for(int ii = 0; ii < ic->sd.op_count; ii++) {
         ic->sd.ops[ii]->fetched_from_uop_cache = TRUE;
       }
     } else if (ic->state == ICACHE_LOOKUP_SERVING
@@ -655,7 +662,7 @@ void update_icache_stage() {
       if (ft_has_ended) {
         ASSERT(ic->proc_id, !decoupled_fe_current_ft_can_fetch_op(ic->proc_id));
         ic->next_state = ICACHE_FINISHED_FT;
-        switch(ic->current_ft_info.ended_by) {
+        switch(ic->current_ft_info.dynamic_info.ended_by) {
           case FT_ICACHE_LINE_BOUNDARY:
           case FT_TAKEN_BRANCH:
             // if there is more op slots
@@ -753,9 +760,13 @@ void update_icache_stage() {
 
 void update_stats_bf_retired(void) {
   ASSERT(ic->proc_id, !decoupled_fe_current_ft_can_fetch_op(ic->proc_id));
-  FT_Info next_ft_info = decoupled_fe_peek_ft(ic->proc_id);
-  Flag next_op_in_uop_cache = in_uop_cache(next_ft_info.start, FALSE, ic->off_path);
-  if (!next_op_in_uop_cache) {
+  Flag next_ft_in_uop_cache = FALSE;
+  if (decoupled_fe_can_fetch_ft(ic->proc_id)) {
+    FT_Info next_ft_info = decoupled_fe_peek_ft(ic->proc_id);
+    next_ft_in_uop_cache =
+      uop_cache_lookup_line(next_ft_info.static_info.start, next_ft_info, FALSE) != NULL;
+  }
+  if (!next_ft_in_uop_cache) {
     // The micro-op cache can reduce the time to refill the pipeline after a fetch barrier.
     int uop_queue_length = get_uop_queue_stage_length();
     int decode_stages_filled = get_decode_stages_filled();
@@ -784,9 +795,9 @@ static inline void icache_process_ops(void) {
             "Inconsistent off-path op PC: %llx ic:%i op:%i\n", op->inst_info->addr, ic->off_path, op->off_path);
 
     if (!op->off_path) {
-      STAT_EVENT(ic->proc_id, INST_SERVED_BY_ICACHE_ON_PATH + op->fetched_from_uop_cache);
+      STAT_EVENT(ic->proc_id, UOPS_SERVED_BY_ICACHE_ON_PATH + op->fetched_from_uop_cache);
     } else {
-      STAT_EVENT(ic->proc_id, INST_SERVED_BY_ICACHE_OFF_PATH + op->fetched_from_uop_cache);
+      STAT_EVENT(ic->proc_id, UOPS_SERVED_BY_ICACHE_OFF_PATH + op->fetched_from_uop_cache);
     }
 
     if(!op->off_path &&
@@ -1366,12 +1377,6 @@ Flag instr_fill_line(Mem_Req* req) {
   if (mem_req_is_type(req, MRT_IFETCH) || mem_req_is_type(req, MRT_IPRF) || mem_req_is_type(req, MRT_FDIPPRFON) || mem_req_is_type(req, MRT_FDIPPRFOFF)) {
     icache_fill_line(req);
     DEBUG(ic->proc_id, "line 0x%llx is filled into icache\n", req->addr);
-  }
-  // TEMP CHANGE: all FDIPPRF are UOC_PREF as well, except for a corner case where branch target is same line
-  if (UOC_PREF && (mem_req_is_type(req, MRT_FDIPPRFON) || mem_req_is_type(req, MRT_FDIPPRFOFF) || mem_req_is_type(req, MRT_UOCPRF))) {
-    if (in_uop_cache(req->addr, FALSE, req->off_path)) {
-      STAT_EVENT(ic->proc_id, UOP_CACHE_HIT_NO_PREFETCH);
-    }
   }
 
   return TRUE;

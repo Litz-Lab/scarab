@@ -27,6 +27,7 @@ typedef struct FT_struct {
   void ft_free_ops_and_clear();
   bool ft_can_fetch_op();
   Op* ft_fetch_op();
+  void ft_set_per_op_ft_info();
 } FT;
 
 // Per core fetch target queue:
@@ -301,17 +302,19 @@ void update_decoupled_fe() {
     // ft_ended_by != FT_NOT_ENDED indicates the end of the current fetch target
     // it is now ready to be pushed to the queue
     if (ft_ended_by != FT_NOT_ENDED) {
-      ASSERT(set_proc_id, per_core_current_ft_to_push[set_proc_id].ft_info.start && per_core_current_ft_to_push[set_proc_id].ft_info.length && per_core_current_ft_to_push[set_proc_id].ops.size());
+      ASSERT(set_proc_id, per_core_current_ft_to_push[set_proc_id].ft_info.static_info.start && per_core_current_ft_to_push[set_proc_id].ft_info.static_info.length && per_core_current_ft_to_push[set_proc_id].ops.size());
+      ASSERT(set_proc_id, per_core_current_ft_to_push[set_proc_id].ops.front()->bom && per_core_current_ft_to_push[set_proc_id].ops.back()->eom);
+      per_core_current_ft_to_push[set_proc_id].ft_set_per_op_ft_info();
       if (!df_ftq->empty()) {
         // sanity check of consecutivity
         Op* last_op = df_ftq->back().ops.back();
-        if (df_ftq->back().ft_info.ended_by == FT_TAKEN_BRANCH) {
-          ASSERT(set_proc_id, last_op->oracle_info.pred_npc == per_core_current_ft_to_push[set_proc_id].ft_info.start);
-        } else if (df_ftq->back().ft_info.ended_by == FT_BAR_FETCH) {
-          ASSERT(set_proc_id, last_op->oracle_info.pred_npc == per_core_current_ft_to_push[set_proc_id].ft_info.start ||
-                              last_op->inst_info->addr + last_op->inst_info->trace_info.inst_size == per_core_current_ft_to_push[set_proc_id].ft_info.start);
+        if (df_ftq->back().ft_info.dynamic_info.ended_by == FT_TAKEN_BRANCH) {
+          ASSERT(set_proc_id, last_op->oracle_info.pred_npc == per_core_current_ft_to_push[set_proc_id].ft_info.static_info.start);
+        } else if (df_ftq->back().ft_info.dynamic_info.ended_by == FT_BAR_FETCH) {
+          ASSERT(set_proc_id, last_op->oracle_info.pred_npc == per_core_current_ft_to_push[set_proc_id].ft_info.static_info.start ||
+                              last_op->inst_info->addr + last_op->inst_info->trace_info.inst_size == per_core_current_ft_to_push[set_proc_id].ft_info.static_info.start);
         } else {
-          ASSERT(set_proc_id, last_op->inst_info->addr + last_op->inst_info->trace_info.inst_size == per_core_current_ft_to_push[set_proc_id].ft_info.start);
+          ASSERT(set_proc_id, last_op->inst_info->addr + last_op->inst_info->trace_info.inst_size == per_core_current_ft_to_push[set_proc_id].ft_info.static_info.start);
         }
       }
       df_ftq->emplace_back(per_core_current_ft_to_push[set_proc_id]);
@@ -391,7 +394,7 @@ FT_Info decoupled_fe_peek_ft(int proc_id) {
     return FT_Info();
   }
 }
-  
+
 decoupled_fe_iter* decoupled_fe_new_ftq_iter() {
   per_core_ftq_iterators[set_proc_id].push_back(decoupled_fe_iter());
   return &per_core_ftq_iterators[set_proc_id].back();
@@ -498,8 +501,9 @@ uint64_t decoupled_fe_get_ftq_num(int proc_id) {
 
 void FT::ft_add_op(Op *op, FT_Ended_By ft_ended_by) {
   if (ops.empty()) {
-    ASSERT(set_proc_id, op->bom && !ft_info.start);
-    ft_info.start = op->inst_info->addr;
+    ASSERT(set_proc_id, op->bom && !ft_info.static_info.start);
+    ft_info.static_info.start = op->inst_info->addr;
+    ft_info.dynamic_info.first_op_off_path = op->off_path;
   } else {
     if (op->bom) {
       // assert consecutivity
@@ -512,11 +516,12 @@ void FT::ft_add_op(Op *op, FT_Ended_By ft_ended_by) {
   }
   ops.emplace_back(op);
   if (ft_ended_by != FT_NOT_ENDED) {
-    ASSERT(set_proc_id, op->eom && !ft_info.length);
-    ASSERT(set_proc_id, ft_info.start);
-    ft_info.length = op->inst_info->addr + op->inst_info->trace_info.inst_size - ft_info.start;
-    ASSERT(set_proc_id, ft_info.ended_by == FT_NOT_ENDED);
-    ft_info.ended_by = ft_ended_by;
+    ASSERT(set_proc_id, op->eom && !ft_info.static_info.length);
+    ASSERT(set_proc_id, ft_info.static_info.start);
+    ft_info.static_info.n_uops = ops.size();
+    ft_info.static_info.length = op->inst_info->addr + op->inst_info->trace_info.inst_size - ft_info.static_info.start;
+    ASSERT(set_proc_id, ft_info.dynamic_info.ended_by == FT_NOT_ENDED);
+    ft_info.dynamic_info.ended_by = ft_ended_by;
   }
 }
 
@@ -528,9 +533,11 @@ void FT::ft_free_ops_and_clear() {
 
   ops.clear();
   op_pos = 0;
-  ft_info.start = 0;
-  ft_info.length = 0;
-  ft_info.ended_by = FT_NOT_ENDED;
+  ft_info.static_info.start = 0;
+  ft_info.static_info.length = 0;
+  ft_info.static_info.n_uops = 0;
+  ft_info.dynamic_info.ended_by = FT_NOT_ENDED;
+  ft_info.dynamic_info.first_op_off_path = FALSE;
 }
 
 bool FT::ft_can_fetch_op() {
@@ -547,4 +554,10 @@ Op* FT::ft_fetch_op() {
         op->inst_info->addr, op->off_path, op->op_num);
 
   return op;
+}
+
+void FT::ft_set_per_op_ft_info() {
+  for (auto op : ops) {
+    op->ft_info = ft_info;
+  }
 }

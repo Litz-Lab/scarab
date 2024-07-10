@@ -1004,7 +1004,7 @@ void convert_dyn_uop(uns8 proc_id, Inst_Info* info, ctype_pin_inst* pi,
 
   trace_uop->exit = is_last_uop ? pi->exit : 0;
 
-  trace_uop->npc = trace_uop->addr;  // CHECKME!!
+  trace_uop->npc = trace_uop->info->addr;
 }
 
 void uop_generator_recover(uns8 proc_id) {

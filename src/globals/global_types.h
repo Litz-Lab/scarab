@@ -47,6 +47,7 @@ typedef struct Stream_Buffer_struct Stream_Buffer;
 typedef struct Table_Info_struct    Table_Info;
 typedef struct HWP_struct           HWP;
 typedef struct HWP_Info_struct      HWP_Info;
+typedef struct FT_Info_struct       FT_Info;
 
 /* Renames -- Try to use these rather than built-in C types in order to preserve
  * portability */

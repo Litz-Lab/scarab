@@ -11,41 +11,47 @@
 #ifndef __UOP_CACHE_H__
 #define __UOP_CACHE_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "op.h"
 
-/**************************************************************************************/
-/* Macros */
-#define UOP_CACHE_LATENCY 1  // Simulating a uop cache latency > 1 is unsupported
-
-typedef struct Uop_Cache_Line_Data_Struct {
+// Uop Cache Data
+typedef struct Uop_Cache_Data_struct {
+  Addr line_start;
   // number of uops in this line
-  int num_uops;
+  uns n_uops;
   // the offset for calculating the next line
   Addr offset;
+  FT_Info_Dynamic ft_info_dynamic;
   // is this line the end of the FT?
-  Flag end;
-} Uop_Cache_Line_Data;
+  Flag end_of_ft;
+
+  Counter used;
+  Flag priority;
+} Uop_Cache_Data;
 
 /**************************************************************************************/
 /* Prototypes */
 
-// only one instance of uop cache
-
+void alloc_mem_uop_cache(uns num_cores);
 void init_uop_cache(uns8 proc_id);
+void set_uop_cache(uns8 proc_id);
 void recover_uop_cache(void);
 
-Uop_Cache_Line_Data* uop_cache_lookup_line(Addr line_addr, Addr ft_start, Addr ft_length, Flag update_repl);
+Flag uop_cache_lookup_ft_and_fill_lookup_buffer(FT_Info ft_info, Flag offpath);
+Uop_Cache_Data* uop_cache_get_line_from_lookup_buffer(void);
+void uop_cache_clear_lookup_buffer(void);
+Uop_Cache_Data* uop_cache_lookup_line(Addr line_start, FT_Info ft_info, Flag update_repl);
 
-/* return whether the instr pc is cached (this does not consider that the whole PW 
-    could already have been fetched, potentially introducing 1 incorrect cycle of latency)*/
-Flag in_uop_cache(Addr pc, Flag update_repl, Flag offpath); 
-
-void end_accumulate(void);
+void clear_accumulation(Flag clear_line_only);
+void end_line_accumulate(Flag last_line_of_ft);
 /* accumulate uop into buffer. If terminating condition reached, call insert_uop_cache */
 void accumulate_op(Op* op);
 
-Flag pw_insert(Uop_Cache_Data pw);
-void set_uop_cache_insert_enable(Flag new_val);
-Uop_Cache_Data get_pw_lookahead_buffer(Addr addr);
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* #ifndef __UOP_CACHE_H__ */
