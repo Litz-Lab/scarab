@@ -56,6 +56,10 @@
 #include "uop_queue_stage.h"
 #include "decoupled_frontend.h"
 
+/**************************************************************************************/
+/* Global vars */
+
+Cmp_Model cmp_model;
 Flag perf_pred_started = FALSE;
 
 /**************************************************************************************/

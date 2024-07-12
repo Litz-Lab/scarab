@@ -12,6 +12,7 @@
 #include <map>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 
 #include "frontend/pt_memtrace/pt_fe.h"
 #include "frontend/frontend_intf.h"

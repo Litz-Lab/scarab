@@ -67,6 +67,7 @@ static Flag dumb_req_done(Mem_Req* req);
 /**************************************************************************************/
 /* Global variables */
 
+Dumb_Model        dumb_model;
 static Proc_Info* infos;
 static Counter    req_num;
 static uns64      page_num_mask;

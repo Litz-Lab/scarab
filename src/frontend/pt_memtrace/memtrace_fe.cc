@@ -53,7 +53,7 @@ extern "C" {
 /**************************************************************************************/
 /* Global Variables */
 
-char*           trace_files[MAX_NUM_PROCS];
+static char*    trace_files[MAX_NUM_PROCS];
 TraceReader*    trace_readers[MAX_NUM_PROCS];
 //TODO: Make per proc?
 uint64_t        ins_id    = 0;
