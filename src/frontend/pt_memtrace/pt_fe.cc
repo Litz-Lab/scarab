@@ -65,8 +65,7 @@ uint64_t pt_ins_id = 0;
 uint64_t pt_prior_tid = 0;
 uint64_t pt_prior_pid = 0;
 
-std::random_device rd {};
-std::mt19937 gen {rd()};
+std::mt19937 gen(0);
 // Generate random addresses near the mean (1GB)
 const uint64_t mean = 1000000000;
 // Generate addresses where approximately 92% hit the L1 cache for DCACHE_SIZE=48KB
