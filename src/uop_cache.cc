@@ -49,7 +49,6 @@ typedef std::pair<Addr, FT_Info_Static> Uop_Cache_Key;
 class Uop_Cache: public Cpp_Cache<Uop_Cache_Key, Uop_Cache_Data> {
  protected:
   uns   offset_bits;
-  uns64 set_mask;
 
   // implementing the virtual hash function
   uns set_idx_hash(Uop_Cache_Key key);
@@ -57,13 +56,17 @@ class Uop_Cache: public Cpp_Cache<Uop_Cache_Key, Uop_Cache_Data> {
  public:
   // constructor
   Uop_Cache(uns nl, uns asc, uns lb, Repl_Policy rp) : Cpp_Cache<Uop_Cache_Key, Uop_Cache_Data>::Cpp_Cache(nl, asc, lb, rp) {
+    // offset_bits is only used to denote the start of the set bits
+    // the set bits follow the offset_bits on the significant side
+    // in other words,
+    // user manipulates the line_bytes of the Cpp_Cache to change the set id hashing pattern
     offset_bits  = LOG2(line_bytes);
-    set_mask     = N_BIT_MASK(LOG2(num_sets)) << offset_bits;
   }
 };
 
 uns Uop_Cache::set_idx_hash(Uop_Cache_Key key) {
-  return (key.first & set_mask) >> offset_bits;
+  // use % instead of masking to support num_sets that is not a power of 2
+  return (key.first >> offset_bits) % num_sets;
 }
 
 // overload operator == of FT_Info_Static type
