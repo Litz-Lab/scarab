@@ -67,6 +67,7 @@
 --tc_assoc                      4
 
 ### Decode Stage
+--decode_path_width_narrower    1
 --decode_cycles                 5
 
 

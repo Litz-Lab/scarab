@@ -69,8 +69,6 @@
 #define DEBUG(proc_id, args...) _DEBUG(proc_id, DEBUG_ICACHE_STAGE, ##args)
 #define DEBUG_FDIP(proc_id, args...) _DEBUG(proc_id, DEBUG_FDIP, ##args)
 
-#define STAGE_MAX_OP_COUNT  ISSUE_WIDTH
-
 /**************************************************************************************/
 /* Global Variables */
 
@@ -86,7 +84,7 @@ extern Rob_Block_Issue_Reason rob_block_issue_reason;
 /**************************************************************************************/
 /* Local prototypes */
 
-static inline void         icache_process_ops(void);
+static inline void         icache_process_ops(Stage_Data* cur_data);
 static inline Inst_Info**  lookup_cache(void);
 static inline void         prefetcher_update_on_icache_access(Flag icache_hit);
 static inline void         icache_hit_events(Flag uop_cache_hit);
@@ -120,8 +118,17 @@ void init_icache_stage(uns8 proc_id, const char* name) {
   ic->sd.name = (char*)strdup(name);
 
   /* initialize the ops array */
-  ic->sd.max_op_count = STAGE_MAX_OP_COUNT;
-  ic->sd.ops          = (Op**)malloc(sizeof(Op*) * STAGE_MAX_OP_COUNT);
+  ASSERT(proc_id, IC_ISSUE_WIDTH);
+  ic->sd.max_op_count = IC_ISSUE_WIDTH;
+  ic->sd.ops          = (Op**)malloc(sizeof(Op*) * IC_ISSUE_WIDTH);
+
+  if (UOP_CACHE_ENABLE) {
+    char uopc_sd_name[32];
+    snprintf(uopc_sd_name, sizeof(uopc_sd_name), "%s_%s", name, "UOPC");
+    ic->uopc_sd.name = (char*)strdup(uopc_sd_name);
+    ic->uopc_sd.max_op_count = UOPC_ISSUE_WIDTH;
+    ic->uopc_sd.ops          = (Op**)malloc(sizeof(Op*) * UOPC_ISSUE_WIDTH);
+  }
 
   /* initialize the cache structure */
   init_cache(&ic->icache, "ICACHE", ICACHE_SIZE, ICACHE_ASSOC, ICACHE_LINE_SIZE,
@@ -150,13 +157,27 @@ void init_icache_stage(uns8 proc_id, const char* name) {
 }
 
 /**************************************************************************************/
+/* get_current_stage_data: */
+
+Stage_Data* get_current_stage_data() {
+  if (!UOP_CACHE_ENABLE) {
+    return &ic->sd;
+  } else {
+    // two stage data cannot be used at once
+    ASSERT(ic->proc_id, ic->sd.op_count == 0 || ic->uopc_sd.op_count == 0);
+    return ic->uopc_sd.op_count? &ic->uopc_sd : &ic->sd;
+  }
+}
+
+/**************************************************************************************/
 /* reset_icache_stage: */
 
 void reset_icache_stage() {
+  Stage_Data* cur_data = get_current_stage_data();
   uns ii;
-  for(ii = 0; ii < STAGE_MAX_OP_COUNT; ii++)
-    ic->sd.ops[ii] = NULL;
-  ic->sd.op_count = 0;
+  for(ii = 0; ii < cur_data->max_op_count; ii++)
+    cur_data->ops[ii] = NULL;
+  cur_data->op_count = 0;
 
   ic->off_path                       = FALSE;
   ic->back_on_path                   = FALSE;
@@ -168,10 +189,11 @@ void reset_icache_stage() {
 /* reset_all_ops_icache_stage: */
 // CMP used for bogus run: may be combined with reset_icache_stage
 void reset_all_ops_icache_stage() {
+  Stage_Data* cur_data = get_current_stage_data();
   uns ii;
-  for(ii = 0; ii < STAGE_MAX_OP_COUNT; ii++)
-    ic->sd.ops[ii] = NULL;
-  ic->sd.op_count = 0;
+  for(ii = 0; ii < cur_data->max_op_count; ii++)
+    cur_data->ops[ii] = NULL;
+  cur_data->op_count = 0;
 
   ic->off_path     = FALSE;
   ic->back_on_path = FALSE;
@@ -181,26 +203,22 @@ void reset_all_ops_icache_stage() {
 /* recover_icache_stage: */
 
 void recover_icache_stage() {
-  Stage_Data* cur = &ic->sd;
+  Stage_Data* cur_data = get_current_stage_data();
   uns         ii;
 
   ASSERT(ic->proc_id, ic->proc_id == bp_recovery_info->proc_id);
   DEBUG(ic->proc_id,
         "Icache stage recovery signaled.  recovery_fetch_addr: 0x%s\n",
         hexstr64s(bp_recovery_info->recovery_fetch_addr));
-  cur->op_count = 0;
-  for(ii = 0; ii < ic->sd.max_op_count; ii++) {
-    if(cur->ops[ii]) {
-      if(FLUSH_OP(cur->ops[ii])) {
-        ASSERT(ic->proc_id, cur->ops[ii]->off_path);
-        free_op(cur->ops[ii]);
-        cur->ops[ii] = NULL;
-
-      } else {
-        cur->op_count++;
-      }
+  for(ii = 0; ii < cur_data->max_op_count; ii++) {
+    if(cur_data->ops[ii]) {
+      ASSERT(ic->proc_id, FLUSH_OP(cur_data->ops[ii]));
+      ASSERT(ic->proc_id, cur_data->ops[ii]->off_path);
+      free_op(cur_data->ops[ii]);
+      cur_data->ops[ii] = NULL;
     }
   }
+  cur_data->op_count = 0;
 
   ic->back_on_path = !bp_recovery_info->recovery_force_offpath;
 
@@ -238,7 +256,8 @@ void redirect_icache_stage() {
 /* debug_icache_stage: */
 
 void debug_icache_stage() {
-  DPRINTF("# %-10s  op_count:%d ", ic->sd.name, ic->sd.op_count);
+  Stage_Data* cur_data = get_current_stage_data();
+  DPRINTF("# %-10s  op_count:%d ", cur_data->name, cur_data->op_count);
   DPRINTF(
     "fetch_addr:0x%s  path:%s  state:%s  next_state:%s\n",
     hexstr64s(ic->fetch_addr),
@@ -246,9 +265,9 @@ void debug_icache_stage() {
     icache_state_names[ic->next_state]);
 
   // print icache stage
-  DPRINTF("# %-10s  op_count:%d\n", "ICache", ic->sd.op_count);
-  print_op_array(GLOBAL_DEBUG_STREAM, ic->sd.ops, STAGE_MAX_OP_COUNT,
-                 ic->sd.op_count);
+  DPRINTF("# %-10s  op_count:%d\n", "ICache", cur_data->op_count);
+  print_op_array(GLOBAL_DEBUG_STREAM, cur_data->ops, cur_data->max_op_count,
+                 cur_data->op_count);
 }
 
 /**************************************************************************************/
@@ -412,16 +431,17 @@ void update_icache_stage() {
 
   STAT_EVENT(ic->proc_id, ICACHE_CYCLE);
   STAT_EVENT(ic->proc_id, ICACHE_CYCLE_ONPATH + ic->off_path);
-  INC_STAT_EVENT(ic->proc_id, INST_LOST_TOTAL, IC_ISSUE_WIDTH);
 
   if (ic->off_path)
     STAT_EVENT(exec->proc_id, ICACHE_STAGE_OFF_PATH);
 
-  if(ic->sd.op_count) {
+  if(ic->sd.op_count || (UOP_CACHE_ENABLE && ic->uopc_sd.op_count)) {
+    // if uop cache is enabled, use UOPC_ISSUE_WIDTH as the optimal width
+    INC_STAT_EVENT(ic->proc_id, INST_LOST_TOTAL, UOP_CACHE_ENABLE ? UOPC_ISSUE_WIDTH : IC_ISSUE_WIDTH);
     STAT_EVENT(ic->proc_id, FETCH_0_OPS);
     INC_STAT_EVENT(ic->proc_id,
                    INST_LOST_FULL_WINDOW + inst_lost_get_full_window_reason(),
-                   IC_ISSUE_WIDTH);
+                   UOP_CACHE_ENABLE ? UOPC_ISSUE_WIDTH : IC_ISSUE_WIDTH);
     DEBUG(ic->proc_id, "Icache stalled\n");
     if(!ic->off_path) {
       STAT_EVENT(map->proc_id, ICACHE_STAGE_STALLED);
@@ -470,8 +490,10 @@ void update_icache_stage() {
               || ic->state == ICACHE_FINISHED_FT
               || ic->state == ICACHE_FINISHED_FT_EXPECTING_NEXT
               || ic->state == UOP_CACHE_FINISHED_FT) {
-      if (ic->state != ICACHE_FINISHED_FT_EXPECTING_NEXT) {
-        ASSERT(ic->proc_id, !ic->sd.op_count);
+      if (ic->state == ICACHE_FINISHED_FT_EXPECTING_NEXT) {
+        ASSERT(ic->proc_id, ic->sd.op_count && !ic->uopc_sd.op_count);
+      } else {
+        ASSERT(ic->proc_id, !ic->sd.op_count && !ic->uopc_sd.op_count);
       }
       ASSERT(ic->proc_id, !decoupled_fe_current_ft_can_fetch_op(ic->proc_id));
       if (!decoupled_fe_can_fetch_ft(ic->proc_id)) {
@@ -593,10 +615,10 @@ void update_icache_stage() {
       // the line must be valid
       ASSERT(ic->proc_id, uop_cache_line->n_uops);
 
-      ASSERT(ic->proc_id, !ic->sd.op_count);
-      ASSERT(ic->proc_id, uop_cache_line->n_uops <= ISSUE_WIDTH);
-      Flag ft_has_ended = decoupled_fe_fill_icache_stage_data(ic->proc_id, uop_cache_line->n_uops, &ic->sd);
-      ASSERT(ic->proc_id, ic->sd.op_count && ic->sd.op_count == uop_cache_line->n_uops);
+      ASSERT(ic->proc_id, !ic->uopc_sd.op_count);
+      ASSERT(ic->proc_id, uop_cache_line->n_uops <= ic->uopc_sd.max_op_count);
+      Flag ft_has_ended = decoupled_fe_fill_icache_stage_data(ic->proc_id, uop_cache_line->n_uops, &ic->uopc_sd);
+      ASSERT(ic->proc_id, ic->uopc_sd.op_count && ic->uopc_sd.op_count == uop_cache_line->n_uops);
 
       if (ft_has_ended) {
         ASSERT(ic->proc_id, !decoupled_fe_current_ft_can_fetch_op(ic->proc_id));
@@ -606,7 +628,7 @@ void update_icache_stage() {
         switch(ic->current_ft_info.dynamic_info.ended_by) {
           case FT_ICACHE_LINE_BOUNDARY:
           case FT_TAKEN_BRANCH:
-            if (ic->sd.op_count < ISSUE_WIDTH) {
+            if (ic->uopc_sd.op_count < ic->uopc_sd.max_op_count) {
               break_fetch = BREAK_UOP_CACHE_READ_LIMIT;
             } else {
               break_fetch = BREAK_UOP_CACHE_READ_LIMIT_AND_ISSUE_WIDTH;
@@ -628,8 +650,8 @@ void update_icache_stage() {
       } else {
         ASSERT(ic->proc_id, decoupled_fe_current_ft_can_fetch_op(ic->proc_id));
         ASSERT(ic->proc_id, !uop_cache_line->end_of_ft);
-        // the current uop cache assumes that uop cache line op num equals ISSUE_WIDTH
-        ASSERT(ic->proc_id, ic->sd.op_count == ISSUE_WIDTH);
+        // the current uop cache assumes that uop cache line op num equals ic->uopc_sd.max_op_count (UOPC_ISSUE_WIDTH)
+        ASSERT(ic->proc_id, ic->uopc_sd.op_count == ic->uopc_sd.max_op_count);
         // next_fetch_addr is usually updated when an FT is fetched.
         // but for uop cache, one FT can span several lines,
         // and uop cache needs to calculate the next line address
@@ -640,8 +662,8 @@ void update_icache_stage() {
       }
 
       // mark all ops as fetched from the uop cache
-      for(int ii = 0; ii < ic->sd.op_count; ii++) {
-        ic->sd.ops[ii]->fetched_from_uop_cache = TRUE;
+      for(int ii = 0; ii < ic->uopc_sd.op_count; ii++) {
+        ic->uopc_sd.ops[ii]->fetched_from_uop_cache = TRUE;
       }
     } else if (ic->state == ICACHE_LOOKUP_SERVING
             || ic->state == ICACHE_NO_LOOKUP_SERVING) {
@@ -697,7 +719,7 @@ void update_icache_stage() {
         }
       } else {
         ASSERT(ic->proc_id, decoupled_fe_current_ft_can_fetch_op(ic->proc_id));
-        ASSERT(ic->proc_id, ic->sd.op_count == ISSUE_WIDTH);
+        ASSERT(ic->proc_id, ic->sd.op_count == ic->sd.max_op_count);
         break_fetch = BREAK_ISSUE_WIDTH;
         ic->next_state = ICACHE_NO_LOOKUP_SERVING;
       }
@@ -707,7 +729,7 @@ void update_icache_stage() {
       STAT_EVENT(ic->proc_id, FETCH_0_OPS);
       if(!ic->off_path) {
         STAT_EVENT(map->proc_id, ICACHE_STAGE_STARVED);
-        INC_STAT_EVENT(ic->proc_id, INST_LOST_WAIT_FOR_ICACHE_MISS_NOT_PREFETCHED + get_last_miss_reason(ic->proc_id), IC_ISSUE_WIDTH - 1);
+        INC_STAT_EVENT(ic->proc_id, INST_LOST_WAIT_FOR_ICACHE_MISS_NOT_PREFETCHED + get_last_miss_reason(ic->proc_id), ic->sd.max_op_count);
       }
       break_fetch = BREAK_WAIT_FOR_MISS;
       ic->next_state = ic->state;
@@ -739,15 +761,17 @@ void update_icache_stage() {
 
   // fetches of this cycle has all been completed.
   // start processing the ops.
-  icache_process_ops();
+  Stage_Data* cur_data = get_current_stage_data();
+  icache_process_ops(cur_data);
 
+  INC_STAT_EVENT(ic->proc_id, INST_LOST_TOTAL, cur_data->max_op_count);
   INC_STAT_EVENT(ic->proc_id, INST_LOST_BREAK_DONT + break_fetch,
-                  IC_ISSUE_WIDTH > ic->sd.op_count ? IC_ISSUE_WIDTH - ic->sd.op_count
-                                                        : 0);
-  STAT_EVENT(ic->proc_id, FETCH_0_OPS + ic->sd.op_count);
+                              cur_data->max_op_count > cur_data->op_count ?
+                              cur_data->max_op_count - cur_data->op_count : 0);
+  STAT_EVENT(ic->proc_id, FETCH_0_OPS + cur_data->op_count);
   STAT_EVENT(ic->proc_id, ST_BREAK_DONT + break_fetch);
   if(!ic->off_path) {
-    if (!ic->sd.op_count)
+    if (!cur_data->op_count)
       STAT_EVENT(map->proc_id, ICACHE_STAGE_STARVED);
     else
       STAT_EVENT(map->proc_id, ICACHE_STAGE_NOT_STARVED);
@@ -779,7 +803,7 @@ void update_stats_bf_retired(void) {
 /**************************************************************************************/
 /* icache_process_ops: process all ops fetched in a cycle.*/
 
-static inline void icache_process_ops(void) {
+static inline void icache_process_ops(Stage_Data* cur_data) {
   static uns last_icache_issue_time = 0; /* for computing fetch break latency */
   uns            fetch_lag;
 
@@ -788,8 +812,8 @@ static inline void icache_process_ops(void) {
   fetch_lag              = cycle_count - last_icache_issue_time;
   last_icache_issue_time = cycle_count;
 
-  for (uns ii = 0; ii < ic->sd.op_count; ii++) {
-    Op* op = ic->sd.ops[ii];
+  for (uns ii = 0; ii < cur_data->op_count; ii++) {
+    Op* op = cur_data->ops[ii];
 
     ASSERTM(ic->proc_id, ic->off_path == op->off_path,
             "Inconsistent off-path op PC: %llx ic:%i op:%i\n", op->inst_info->addr, ic->off_path, op->off_path);

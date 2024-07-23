@@ -43,6 +43,7 @@
 #include "thread.h"
 #include "uop_cache.h"
 #include "decode_stage.h"
+#include "icache_stage.h"
 
 #include "core.param.h"
 #include "debug/debug.param.h"
@@ -68,7 +69,7 @@ int map_off_path = 0;
 /* Local prototypes */
 
 static inline void stage_process_op(Op*);
-static inline Flag map_fetch_fill_op(Stage_Data* src_sd, int* fetch_idx, Flag src_is_icache);
+static inline Flag map_fetch_fill_op(Stage_Data* src_sd, int* fetch_idx);
 static inline void shift_ops_to_arr_start(Stage_Data* sd);
 
 /**************************************************************************************/
@@ -97,6 +98,10 @@ void init_map_stage(uns8 proc_id, const char* name) {
     Stage_Data* cur = &map->sds[ii];
     snprintf(tmp_name, MAX_STR_LENGTH, "%s %d", name, STAGE_MAX_DEPTH - ii - 1);
     cur->name         = (char*)strdup(tmp_name);
+    ASSERT(proc_id, STAGE_MAX_OP_COUNT >= IC_ISSUE_WIDTH);
+    if (UOP_CACHE_ENABLE) {
+      ASSERT(proc_id, STAGE_MAX_OP_COUNT >= UOPC_ISSUE_WIDTH);
+    }
     cur->max_op_count = STAGE_MAX_OP_COUNT;
     cur->ops          = (Op**)malloc(sizeof(Op*) * STAGE_MAX_OP_COUNT);
   }
@@ -172,12 +177,10 @@ void debug_map_stage() {
 
 // Consume just from one: Select the stage to consume from
 // Else if MAP_CONSUME_FROM_BOTH_SRCS, also consume from the second one.
-void update_map_stage(Stage_Data* dec_src_sd, Stage_Data* uopq_src_sd, Flag uopq_src_is_icache) {
+void update_map_stage(Stage_Data* dec_src_sd, Stage_Data* uopq_src_sd) {
   Flag        stall = (map->last_sd->op_count > 0);
   Stage_Data* consume_from_sd = NULL;
   Stage_Data* other_sd = NULL;
-  Flag consume_from_is_icache = FALSE;
-  Flag other_is_icache = FALSE;
   Flag fetch_from_both_srcs = FALSE;
   Stage_Data *cur, *prev;
   Op**        temp;
@@ -204,28 +207,16 @@ void update_map_stage(Stage_Data* dec_src_sd, Stage_Data* uopq_src_sd, Flag uopq
   if (UOP_CACHE_ENABLE) {
     // When the uop cache is enabled, the next op to be consumed by the map stage
     // is from either the decode stage or the uop cache source.
-    // The uop cache source is either the uop queue or the icache stage bypassing the uop queue.
+    // The uop cache source is either the uop queue or the icache stage uopc stage data bypassing the uop queue.
     // The map stage may consume multiple ops in one cycle from both
     // the map stage and the uop cache source if allowed.
     ASSERT(map->proc_id, uopq_src_sd != NULL);
     if (dec_src_sd->op_count && dec_src_sd->ops[0]->op_num == map_stage_next_op_num) {
       consume_from_sd = dec_src_sd;
-      consume_from_is_icache = FALSE;
       other_sd = uopq_src_sd;  //can only consume ALL ops from this stage if the other sd has them ready. Otherwise only the first few
-      if (uopq_src_is_icache) {
-        other_is_icache = TRUE;
-      } else {
-        other_is_icache = FALSE;
-      }
     } else if (uopq_src_sd->op_count && uopq_src_sd->ops[0]->op_num == map_stage_next_op_num) {
       consume_from_sd = uopq_src_sd;
-      if (uopq_src_is_icache) {
-        consume_from_is_icache = TRUE;
-      } else {
-        consume_from_is_icache = FALSE;
-      }
       other_sd = dec_src_sd;
-      other_is_icache = FALSE;
     }
     fetch_from_both_srcs = MAP_CONSUME_FROM_BOTH_SRCS && cur->max_op_count >= consume_from_sd->op_count + other_sd->op_count;
   } else {
@@ -259,9 +250,9 @@ void update_map_stage(Stage_Data* dec_src_sd, Stage_Data* uopq_src_sd, Flag uopq
     Flag fetched_cfsd = FALSE;
     Flag fetched_osd = FALSE;
     do {
-      fetched_cfsd = map_fetch_fill_op(consume_from_sd, &cfsd_ii, consume_from_is_icache);
+      fetched_cfsd = map_fetch_fill_op(consume_from_sd, &cfsd_ii);
       if (fetch_from_both_srcs) {
-        fetched_osd = map_fetch_fill_op(other_sd, &osd_ii, other_is_icache);
+        fetched_osd = map_fetch_fill_op(other_sd, &osd_ii);
       }
     } while (fetched_cfsd || fetched_osd);
 
@@ -306,44 +297,12 @@ static inline void stage_process_op(Op* op) {
 /**************************************************************************************/
 /* map_fetch_fill_op: Fill the map stage with op from src at fetch_idx */
 
-static inline Flag map_fetch_fill_op(Stage_Data* src_sd, int* fetch_idx, Flag src_is_icache) {
+static inline Flag map_fetch_fill_op(Stage_Data* src_sd, int* fetch_idx) {
   Stage_Data* dest_sd = &map->sds[STAGE_MAX_DEPTH - 1];
   if (*fetch_idx == src_sd->max_op_count)
     return FALSE;
 
   Op* op = src_sd->ops[*fetch_idx];
-
-  // The only case where icache sd can be consumed by the map stage is
-  // when the instruction is fetched from uop and needs to bypass the uop queue.
-  // So if the instruction is not fetched from uop, it cannot be used at this moment.
-
-  // More detailed explanations:
-  // Q: If `src_is_icache` is true, how can the op be `fetched_from_uop_cache`?
-  // A: In the first cycle of the icache stage, we look up both icache and the uop cache.
-  // No matter where the ops come from (icache or uop cache), they are added to the icache stage data,
-  // and the way to distinguish them is to look at `fetched_from_uop_cache` of each op.
-  // If in the first icache cycle the uop queue is NOT empty,
-  // the ops fetched from the uop cache will be added to the uop queue in the next cycle;
-  // otherwise, if the uop queue is empty,
-  // the ops fetched from the uop cache can bypass the uop queue and go directly to the map stage in the next cycle.
-  // This API is supposed to consume ops from the icache stage only in the latter case,
-  // and the following if statements make it sure.
-  // Those ops that fail the second following if-conditions are fetched from the icache and still need to be decoded,
-  // so they are not ready yet.
-
-  // Q: What if `MAP_CONSUME_FROM_BOTH_SRCS` is on?
-  // A: When `MAP_CONSUME_FROM_BOTH_SRCS` is on,
-  // we are allowed to fetch from both **decode stage** and **the uop cache source**,
-  // where the **the uop cache source** is either the *uop queue* or the *icache stage data* when the uop queue is empty.
-  // Still, when the **the uop cache source** is the *icache stage data*,
-  // the ops that can be consumed are required to be fetched from the uop cache.
-  // `MAP_CONSUME_FROM_BOTH_SRCS` being on does not change this fact.
-
-  if (src_is_icache) {
-    if (op && !op->fetched_from_uop_cache) {
-      return FALSE;
-    }
-  }
 
   if (op && op->op_num == map_stage_next_op_num) {
     DEBUG(map->proc_id, "Fetching opnum=%llu from %s at idx=%i\n", op->op_num, src_sd->name, *fetch_idx);

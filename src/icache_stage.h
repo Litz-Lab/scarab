@@ -34,7 +34,8 @@
 #include "stage_data.h"
 #include "decoupled_frontend.h"
 
-#define IC_ISSUE_WIDTH      ISSUE_WIDTH
+#define IC_ISSUE_WIDTH  ISSUE_WIDTH - DECODE_PATH_WIDTH_NARROWER
+#define UOPC_ISSUE_WIDTH  ISSUE_WIDTH
 
 /**************************************************************************************/
 /* Forward Declarations */
@@ -83,7 +84,10 @@ typedef enum Break_Reason_enum {
 
 typedef struct Icache_Stage_struct {
   uns8       proc_id;
+  /* two data paths: */
+  /* uops fetched from uop cache go to uopc_sd, otherwise sd */
   Stage_Data sd; /* stage interface data */
+  Stage_Data uopc_sd;
 
   Icache_State state; /* state that the ICACHE is in */
   Icache_State
@@ -136,6 +140,7 @@ extern Icache_Stage* ic;
 /* vanilla hps model */
 void set_icache_stage(Icache_Stage*);
 void init_icache_stage(uns8, const char*);
+Stage_Data* get_current_stage_data(void);
 void reset_icache_stage(void);
 void reset_all_ops_icache_stage(void);
 void recover_icache_stage(void);

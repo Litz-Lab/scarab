@@ -97,7 +97,8 @@ void update_uop_queue_stage(Stage_Data* src_sd) {
     }
     for (int i = 0; i < src_sd->max_op_count; i++) {
       Op* src_op = src_sd->ops[i];
-      if (src_op && src_op->fetched_from_uop_cache) {
+      if (src_op) {
+        ASSERT(src_op->proc_id, src_op->fetched_from_uop_cache);
         new_sd->ops[new_sd->op_count] = src_op;
         src_sd->ops[i] = NULL;
         new_sd->op_count++;
