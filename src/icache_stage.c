@@ -127,7 +127,8 @@ void init_icache_stage(uns8 proc_id, const char* name) {
     snprintf(uopc_sd_name, sizeof(uopc_sd_name), "%s_%s", name, "UOPC");
     ic->uopc_sd.name = (char*)strdup(uopc_sd_name);
     ic->uopc_sd.max_op_count = UOPC_ISSUE_WIDTH;
-    ic->uopc_sd.ops          = (Op**)malloc(sizeof(Op*) * UOPC_ISSUE_WIDTH);
+    ic->uopc_sd.op_count     = 0;
+    ic->uopc_sd.ops          = (Op**)calloc(UOPC_ISSUE_WIDTH, sizeof(Op*));
   }
 
   /* initialize the cache structure */

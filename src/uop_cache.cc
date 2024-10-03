@@ -263,7 +263,7 @@ void end_line_accumulate(Flag last_line_of_ft) {
     // consecutive lines might share the same start address (indicated by a zero offset).
     // it causes ambiguity and we do not insert the FT.
     Flag ft_contains_zero_offset_line = FALSE;
-    for (uns i = 0; i < *current_num_accumulated_lines; i++) {
+    for (uns i = 0; i < *current_num_accumulated_lines && i < UOP_CACHE_ASSOC; i++) {
       Uop_Cache_Data* insert_line = &current_accumulation_buffer->at(i);
       if (!insert_line->end_of_ft && insert_line->offset == 0) {
         ft_contains_zero_offset_line = TRUE;
