@@ -1,0 +1,14 @@
+/* Copyright 2020 HPS/SAFARI Research Groups */
+/* -*- Mode: c -*- */
+/* Params for the ChampSim-shim MLOP (vendor: mlop_dpc3.l1d).
+ * One instance; enable by listing TYPE_MLOP in exactly one of
+ * --pref_{dcache,mlc,l1}_prefetchers with its DEST_* token.
+ * MLOP is multi-fill-level (issues FILL_L1 and FILL_L2). When
+ * PREF_MLOP_ROUTE_BY_FILL is TRUE, each prefetch is routed by its own fill
+ * level (FILL_L1->dcache, FILL_L2->mlc) instead of collapsing to the instance
+ * DEST_* level. Native placement is dcache (it is an L1D prefetcher). */
+
+/* Default FALSE: route all of MLOP's prefetches to the single drive level
+ * (collapsed) -- best IPC in Scarab's hierarchy. TRUE: faithful multi-fill, route
+ * each prefetch by its own fill level (FILL_L1->L1D, FILL_L2->L2). */
+DEF_PARAM(pref_mlop_route_by_fill, PREF_MLOP_ROUTE_BY_FILL, Flag, Flag, FALSE, )

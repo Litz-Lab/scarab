@@ -53,6 +53,7 @@
 #include "prefetcher//pref_stream.h"
 #include "prefetcher//pref_stride.h"
 #include "prefetcher//pref_stridepc.h"
+#include "prefetcher/champsim/pref_champsim.h"
 #include "prefetcher/l2l1pref.h"
 #include "prefetcher/pref_2dc.h"
 #include "prefetcher/pref_ghb.h"

@@ -84,6 +84,53 @@ HWP pref_table [] = {
           pref_markov_umlc_miss,        		NULL,  	pref_markov_umlc_prefhit,   		
 	    pref_markov_ul1_miss, 		NULL,    pref_markov_ul1_prefhit  , NULL, NULL   }, 
 
+    /* === ChampSim shim prefetchers (src/prefetcher/champsim) === */
+
+    /* MLOP: hooks at all three levels; the training level comes from which
+       pref_{dcache,mlc,l1}_prefetchers list TYPE_MLOP appears in. */
+    { "mlop",     NULL,   		pref_mlop_init,     	NULL,
+                  pref_mlop_per_core_done,
+		  pref_mlop_dl0_miss,   pref_mlop_dl0_hit,      pref_mlop_dl0_pref_hit,
+		  pref_mlop_mlc_miss,   pref_mlop_mlc_hit,      pref_mlop_mlc_pref_hit,
+		  pref_mlop_l1_miss,    pref_mlop_l1_hit,       pref_mlop_l1_pref_hit,
+		  NULL, NULL   },
+
+    /* Self-contained IPCP: hooks at all three levels; trained at the level whose
+       list names TYPE_IPCP. umlc_cache_fill feeds its accuracy throttle. */
+    { "ipcp",     NULL,   		pref_ipcp_init,     	NULL,
+                  pref_ipcp_per_core_done,
+		  pref_ipcp_dl0_miss,   pref_ipcp_dl0_hit,      pref_ipcp_dl0_pref_hit,
+		  pref_ipcp_mlc_miss,   pref_ipcp_mlc_hit,      pref_ipcp_mlc_pref_hit,
+		  pref_ipcp_l1_miss,    pref_ipcp_l1_hit,       pref_ipcp_l1_pref_hit,
+		  NULL,                 pref_ipcp_umlc_cache_fill   },
+
+    /* ChampSim next-line (sequential/streaming baseline): hooks at all three
+       levels; trained at the level whose list names TYPE_NEXTLINE. */
+    { "nextline",  NULL,   		pref_nextline_init,   	NULL,
+                  pref_nextline_per_core_done,
+		  pref_nextline_dl0_miss, pref_nextline_dl0_hit, pref_nextline_dl0_pref_hit,
+		  pref_nextline_mlc_miss, pref_nextline_mlc_hit, pref_nextline_mlc_pref_hit,
+		  pref_nextline_l1_miss,  pref_nextline_l1_hit,  pref_nextline_l1_pref_hit,
+		  NULL, NULL   },
+
+    /* ChampSim IP-stride (DPC2 baseline): hooks at all three levels; trained at
+       the level whose list names TYPE_IPSTRIDE. */
+    { "ipstride",  NULL,   		pref_ipstride_init,   	NULL,
+                  pref_ipstride_per_core_done,
+		  pref_ipstride_dl0_miss, pref_ipstride_dl0_hit, pref_ipstride_dl0_pref_hit,
+		  pref_ipstride_mlc_miss, pref_ipstride_mlc_hit, pref_ipstride_mlc_pref_hit,
+		  pref_ipstride_l1_miss,  pref_ipstride_l1_hit,  pref_ipstride_l1_pref_hit,
+		  NULL, NULL   },
+
+    /* SPP: hooks at all three levels (trained at the level whose list names
+       TYPE_SPP) + the ul1_cache_fill eviction-training hook. */
+    { "spp",      NULL,   		pref_spp_init,      	NULL,
+                  pref_spp_per_core_done,
+		  pref_spp_dl0_miss,    pref_spp_dl0_hit,       pref_spp_dl0_pref_hit,
+		  pref_spp_mlc_miss,    pref_spp_mlc_hit,       pref_spp_mlc_pref_hit,
+		  pref_spp_l1_miss,     pref_spp_l1_hit,        pref_spp_l1_pref_hit,
+		  pref_spp_ul1_cache_fill, NULL },
+
     { NULL,  NULL,   		NULL,    		NULL,
                   NULL,
 		  NULL,        		NULL,      		NULL,      

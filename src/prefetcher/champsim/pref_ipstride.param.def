@@ -1,0 +1,10 @@
+/* Copyright 2020 HPS/SAFARI Research Groups */
+/* -*- Mode: c -*- */
+/* Params for the ChampSim-shim IP-stride prefetcher (vendor: ip_stride.l2c,
+ * the DPC2 baseline). Enable/level via the framework instance lists: put
+ * TYPE_IPSTRIDE in exactly one of --pref_{dcache,mlc,l1}_prefetchers with its
+ * DEST_* destination token. */
+
+/* Route each prefetch by the vendor's adaptive FILL_L2/FILL_LLC choice
+ * (MSHR-occupancy based) instead of the instance's fixed DEST_* level. */
+DEF_PARAM(pref_ipstride_route_by_fill, PREF_IPSTRIDE_ROUTE_BY_FILL, Flag, Flag, FALSE, )

@@ -73,7 +73,7 @@ add_subdirectory(ramulator)
 add_subdirectory(pin/pin_lib)
 add_subdirectory(pin/pin_exec/testing)
 
-set(scarab_dirs bp debug bp/template_lib dvfs frontend globals isa libs memory power prefetcher confidence .)
+set(scarab_dirs bp debug bp/template_lib dvfs frontend globals isa libs memory power prefetcher prefetcher/champsim prefetcher/champsim/wrappers confidence .)
 if(DEFINED ENV{SCARAB_ENABLE_PT_MEMTRACE})
   set(scarab_dirs ${scarab_dirs} frontend/pt_memtrace)
 endif()
@@ -88,7 +88,19 @@ foreach(dir IN LISTS scarab_dirs)
     set(srcs ${srcs} ${dir_srcs})
 endforeach()
 
-add_executable(scarab 
+# ChampSim shim: each wrapper TU #includes an UNMODIFIED vendor prefetcher source,
+# which trips warnings (incl. macro redefinitions, which GCC cannot disable via
+# -Wno-* or pragmas) that Scarab's -Werror would otherwise reject. Instead of
+# compiling the whole TU with -w, mark the include tree as system headers for
+# these TUs only (-isystem outranks -I for the same dir): warnings inside the
+# included vendor/env files are suppressed, while code written in the wrapper
+# .cc itself keeps full -Wall -Werror. The shim core (champsim_shim.cc) is a
+# normal TU with full warnings.
+file(GLOB champsim_vendor_tus CONFIGURE_DEPENDS prefetcher/champsim/wrappers/*.cc)
+set_source_files_properties(${champsim_vendor_tus} PROPERTIES COMPILE_OPTIONS
+    "-isystem;${CMAKE_CURRENT_SOURCE_DIR}")
+
+add_executable(scarab
     ${srcs}
 )
 
