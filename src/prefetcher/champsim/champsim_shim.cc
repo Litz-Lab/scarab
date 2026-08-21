@@ -22,7 +22,9 @@ extern "C" {
 #include "core.param.h"
 #include "general.param.h"
 #include "memory/memory.param.h"
+#include "prefetcher/pref.param.h"
 
+#include "memory/memory.h"
 #include "prefetcher/pref_common.h"
 
 #include "statistics.h"
@@ -83,6 +85,39 @@ int shim_issue(Level level, uint32_t proc_id, int hwp_id, uint64_t pf_byte_addr,
 void shim_stat(uint32_t proc_id, int stat_id) {
   if (stat_id >= 0)
     STAT_EVENT(proc_id, stat_id);
+}
+
+uint32_t shim_queue_size(Level level) {
+  switch (level) {
+    case Level::DCACHE:
+      return PREF_DL0REQ_QUEUE_SIZE;
+    case Level::UMLC:
+      return PREF_UMLC_REQ_QUEUE_SIZE;
+    case Level::UL1:
+      return PREF_UL1REQ_QUEUE_SIZE;
+  }
+  ASSERTM(0, FALSE, "shim_queue_size: unhandled level %d\n", (int)level);
+  return PREF_UMLC_REQ_QUEUE_SIZE;
+}
+
+void shim_wire_backpressure(uint32_t proc_id, Level level, uint32_t* pq_size, uint32_t* pq_occupancy,
+                            uint32_t* mshr_size, uint32_t* mshr_occupancy) {
+  /* MSHR is a genuine core-wide resource (MEM_REQ_BUFFER_ENTRIES==32 matches
+   * ChampSim's own MSHR default), so it's the same for every import/level. */
+  *mshr_size = MEM_REQ_BUFFER_ENTRIES;
+  *mshr_occupancy = (uint32_t)mem_get_req_count(proc_id);
+  /* PQ must track the specific dl0req/umlc_req/ul1req queue this instance
+   * drains into (sizes differ: 32/64/128) -- see shim_queue_size(). */
+  *pq_size = shim_queue_size(level);
+  /* APPROXIMATION: num_outstanding_l1_misses is core-wide outstanding-miss
+   * traffic, not a live valid-entry count for the specific dest queue named
+   * by pq_size above. pref_common.c's HWP_Core_struct holds the real per-slot
+   * .valid state for dl0req/umlc_req/ul1req, but no accessor currently
+   * exposes a live count of it outside pref_common.c, so this proxy stands
+   * in for the quantity vendor code actually wants (cache->PQ.occupancy,
+   * e.g. mlop_dpc3.l1d.inc:652). If a true per-level occupancy accessor is
+   * ever added to the framework, wire that here instead. */
+  *pq_occupancy = (uint32_t)mem->uncores[proc_id].num_outstanding_l1_misses;
 }
 
 }  // namespace champsim

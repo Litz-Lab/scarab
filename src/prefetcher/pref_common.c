@@ -812,6 +812,29 @@ void pref_update_core(uns proc_id) {
   // ul1 access
   //  - 1. create a new request and call new_mem_req
 
+  // One-time config sanity check: with PREF_DL0_FILL_DCACHE on, DL0-destined
+  // prefetch fills (below, new_mem_req(MRT_DPRF, ..., dest=DEST_DCACHE))
+  // compete for the same mem_req_buffer as demand traffic (icache/dcache
+  // misses). PREF_L1Q_DEMAND_RESERVE is meant to guarantee demand headroom
+  // ("leave room in the mem req buffer for demand traffic" below), but its
+  // default is 0 -- which makes that check a no-op ((free_slots) < 0 is never
+  // true), so a prefetcher with no self-throttle (e.g. IPCP, whose vendor
+  // code never reads PQ/MSHR occupancy) can fill the request buffer
+  // entirely with DL0 fills, starving demand fetches and permanently
+  // stalling the frontend (decoupled_frontend.cc's "No forward progress"
+  // watchdog) rather than just degrading IPC. Fail at start instead of
+  // deadlocking mid-run on some later, heavier phase.
+  static Flag dl0_fill_dcache_checked = FALSE;
+  if (!dl0_fill_dcache_checked) {
+    dl0_fill_dcache_checked = TRUE;
+    ASSERTM(proc_id, !PREF_DL0_FILL_DCACHE || PREF_L1Q_DEMAND_RESERVE > 0,
+            "--pref_dl0_fill_dcache 1 with --pref_l1q_demand_reserve 0 (the default): DL0 "
+            "prefetch fills can fully saturate the per-core request buffer (%u entries) and "
+            "starve demand traffic, deadlocking the frontend on a heavy enough phase instead "
+            "of just costing IPC. Set --pref_l1q_demand_reserve to a nonzero value (e.g. 4).\n",
+            mem->req_buffers_per_core);
+  }
+
   Pref_Mem_Req* dl0req_queue = pref.cores[proc_id]->dl0req_queue;
   int* dl0req_queue_send_pos = &pref.cores[proc_id]->dl0req_queue_send_pos;
   Pref_Mem_Req* umlc_req_queue = pref.cores[proc_id]->umlc_req_queue;

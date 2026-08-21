@@ -143,6 +143,13 @@ static inline void shim_op(uns8 proc_id, Addr lineAddr, Addr loadPC, uint8_t cac
   champsim::tick(proc_id);
   g_shim.cpu = proc_id;
   g_shim.begin_operate();
+  /* Real backpressure for every template-based import by default -- see
+   * champsim::shim_wire_backpressure(). Only vendors that actually read
+   * PQ/MSHR (currently IP-stride here; MLOP is hand-written, wires the same
+   * helper itself) are affected; SPP/next-line never reference these fields,
+   * so this is a no-op for them. SHIM_EXTRA_OP is for glue beyond this. */
+  champsim::shim_wire_backpressure(proc_id, g_shim._level, &g_shim.PQ.SIZE, &g_shim.PQ.occupancy, &g_shim.MSHR.SIZE,
+                                   &g_shim.MSHR.occupancy);
 #ifdef SHIM_EXTRA_OP
   SHIM_EXTRA_OP
 #endif

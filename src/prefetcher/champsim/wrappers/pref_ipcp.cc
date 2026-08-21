@@ -89,6 +89,15 @@ static inline void ipcp_op(uns8 proc_id, Addr lineAddr, Addr loadPC, uint8_t cac
   STAT_EVENT(proc_id, PREF_SHIM_OPERATE);
   champsim::tick(proc_id);
   g_ipcp.cpu = proc_id;
+  /* Real backpressure by default, via the one shared helper every import
+   * wires through -- see champsim::shim_wire_backpressure(). Current IPCP
+   * (ipcp_isca2020.l1d.inc) never reads PQ/MSHR itself (its only throttle is
+   * the accuracy-based prefetch_degree[] below), so this is a no-op today;
+   * it's wired anyway so a future vendor swap/update that does check
+   * occupancy gets real values without another silent gap like the one this
+   * fixes for MLOP's PQ.SIZE. */
+  champsim::shim_wire_backpressure(proc_id, g_ipcp._level, &g_ipcp.PQ.SIZE, &g_ipcp.PQ.occupancy, &g_ipcp.MSHR.SIZE,
+                                   &g_ipcp.MSHR.occupancy);
   g_ipcp.l1d_prefetcher_operate(cs_ipcp_addr(lineAddr), (uint64_t)loadPC, cache_hit, (uint8_t)LOAD,
                                 /*critical_ip_flag=*/1);
 }

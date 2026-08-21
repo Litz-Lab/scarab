@@ -3,9 +3,11 @@
 /* ChampSim's classic IP-stride prefetcher (DPC2 baseline, vendor:
  * ip_stride.l2c, byte-for-byte). Enable by listing TYPE_IPSTRIDE in one of
  * --pref_{dcache,mlc,l1}_prefetchers with its DEST_* token. The vendor tags
- * prefetches FILL_L2/FILL_LLC adaptively by MSHR occupancy; the extra-op glue
- * feeds it real occupancy, and --pref_ipstride_route_by_fill 1 routes each
- * prefetch by that choice instead of the instance's fixed DEST_* level. */
+ * prefetches FILL_L2/FILL_LLC adaptively by MSHR occupancy; shim_op() (in
+ * shim_import.h) wires real MSHR occupancy for every template-based import by
+ * default, so no extra-op glue is needed here for that. --pref_ipstride_route_by_fill 1
+ * routes each prefetch by the vendor's own fill-level choice instead of the
+ * instance's fixed DEST_* level. */
 
 #include "prefetcher/champsim/pref_ipstride.param.h"
 
@@ -15,7 +17,4 @@
 #define SHIM_EXTRA_INIT                                \
   g_shim._route_by_fill = PREF_IPSTRIDE_ROUTE_BY_FILL; \
   g_shim._max_pf_per_op = PREF_IPSTRIDE_MAX_PF_PER_OP;
-#define SHIM_EXTRA_OP                        \
-  g_shim.MSHR.SIZE = MEM_REQ_BUFFER_ENTRIES; \
-  g_shim.MSHR.occupancy = mem_get_req_count(proc_id);
 #include "prefetcher/champsim/shim_import.h"

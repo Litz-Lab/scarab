@@ -80,7 +80,12 @@ extern "C" void pref_mlop_init(HWP* hwp) {
   /* Construct MLOP from params instead of calling the vendor initializer, which
    * hardcodes its knobs as function-local consts. All are ctor args and MLOP
    * sizes its tables with vectors, so nothing in the vendor file changes. This
-   * also retires the fake NUM_SET/NUM_WAY: AMT_SIZE is now passed directly. */
+   * also retires the fake NUM_SET/NUM_WAY: AMT_SIZE is now passed directly.
+   * PREF_MLOP_AMT_SIZE defaults to 8192, the value ChampSim's own DPC3-
+   * competition geometry (1024x16, i.e. a 1MB L1D) used to derive via
+   * 32*NUM_SET*NUM_WAY/BLOCKS_IN_ZONE -- not Scarab's real dcache/mlc geometry
+   * (64KB 1-way / 512KB 4-way, memory.param.def). Sweep --pref_mlop_amt_size
+   * directly rather than trying to re-derive it from Scarab's cache params. */
   cs_mlop::L1D_PREF_2::prefetchers = std::vector<cs_mlop::L1D_PREF_2::MLOP>(
       NUM_CPUS, cs_mlop::L1D_PREF_2::MLOP(PAGE_SIZE / BLOCK_SIZE, PREF_MLOP_AMT_SIZE, PREF_MLOP_DEGREE,
                                           PREF_MLOP_NUM_UPDATES, PREF_MLOP_L1D_THRESH, PREF_MLOP_L2C_THRESH,
@@ -98,12 +103,12 @@ static inline void mlop_op(uns8 proc_id, Addr lineAddr, Addr loadPC, uint8_t cac
   champsim::tick(proc_id);
   g_mlop.cpu = proc_id;
   g_mlop.begin_operate(); /* reset per-operate dedup set */
-  /* Real backpressure (READ-ONLY Scarab state) so MLOP's built-in PQ/MSHR throttle
-   * self-limits like ChampSim (MEM_REQ_BUFFER_ENTRIES==32 matches ChampSim MSHR). */
-  g_mlop.MSHR.SIZE = MEM_REQ_BUFFER_ENTRIES;
-  g_mlop.MSHR.occupancy = mem_get_req_count(proc_id);
-  g_mlop.PQ.SIZE = PREF_UMLC_REQ_QUEUE_SIZE;
-  g_mlop.PQ.occupancy = mem->uncores[proc_id].num_outstanding_l1_misses;
+  /* Real backpressure (READ-ONLY Scarab state) so MLOP's built-in PQ/MSHR
+   * throttle self-limits like ChampSim, via the one shared helper every
+   * import wires through -- see champsim::shim_wire_backpressure() for what
+   * each field means and its approximation caveat. */
+  champsim::shim_wire_backpressure(proc_id, g_mlop._level, &g_mlop.PQ.SIZE, &g_mlop.PQ.occupancy, &g_mlop.MSHR.SIZE,
+                                   &g_mlop.MSHR.occupancy);
   /* MLOP detects a prefetch-hit via block[set][way].prefetch when cache_hit==1. */
   g_mlop._blk.prefetch = pref_hit;
   g_mlop._blk.valid = 1;

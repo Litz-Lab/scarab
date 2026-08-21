@@ -25,8 +25,13 @@ struct CS_BLOCK {
 };
 
 /* Minimal queue model for bandwidth-aware prefetchers (PQ.occupancy/SIZE,
- * MSHR.occupancy/SIZE). Defaults make "queue never full" so prefetchers that
- * gate on occupancy behave like the hand-ports (no PQ throttle). */
+ * MSHR.occupancy/SIZE). The ctor below only zero-initializes these as a
+ * placeholder for the brief window before the first operate(): every import's
+ * operate glue overwrites both with real Scarab state on every call via the
+ * single shared champsim::shim_wire_backpressure() (see champsim_shim.h) --
+ * either automatically (shim_op(), for template-based imports) or explicitly
+ * (hand-written ipcp/mlop wrappers). Only vendors whose own code actually
+ * reads PQ/MSHR (currently MLOP, IP-stride) are affected behaviorally. */
 struct CS_QUEUE {
   uint32_t occupancy;
   uint32_t SIZE;
@@ -108,7 +113,10 @@ class CACHE {
 
   CACHE()
       : cpu(0), NAME("champsim"), NUM_SET(1024), NUM_WAY(16),
-        PQ{0u, (1u << 20)}, MSHR{0u, (1u << 20)},
+        /* Real placeholder: shim_wire_backpressure() overwrites both before
+         * the vendor's own operate() ever runs (see comment on CS_QUEUE
+         * above), so this value never actually reaches vendor logic. */
+        PQ{0u, 0u}, MSHR{0u, 0u},
         _level(champsim::Level::UMLC), _route_by_fill(false), _dedup_per_op(false),
         _max_pf_per_op(0), _op_pf_count(0),
         _hwp_id(0), _stat_issued(-1), _stat_qfull(-1),

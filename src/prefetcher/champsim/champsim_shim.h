@@ -50,6 +50,29 @@ inline Level level_from_fill(int fill_level) {
  * pass a negative id to skip the stat. */
 int shim_issue(Level level, uint32_t proc_id, int hwp_id, uint64_t pf_byte_addr, int stat_issued, int stat_qfull);
 
+/* Real capacity of the Scarab request queue a shim instance at `level` drains
+ * into (dl0req/umlc_req/ul1req -- 32/64/128 by default, pref.param.def). Lets a
+ * wrapper wire its vendor's own PQ.SIZE (e.g. MLOP's occupancy-based throttle,
+ * mlop_dpc3.l1d.inc:652) to the queue it actually issues into. A wrapper must
+ * NOT hardcode one level's size (e.g. always PREF_UMLC_REQ_QUEUE_SIZE): the
+ * instance's DEST_* token (`_level`) can place it at any of the three queues,
+ * each a different size, so a fixed constant silently mis-sizes the throttle
+ * whenever the instance isn't at that one hardcoded level. */
+uint32_t shim_queue_size(Level level);
+
+/* Single shared place backpressure is wired: fills the four out-params (PQ
+ * size, PQ occupancy, MSHR size, MSHR occupancy) with real Scarab state for a
+ * shim instance at `level`, instead of each wrapper duplicating the same four
+ * assignments (or skipping them, which leaves the fake CACHE's ctor default
+ * in effect -- see csenv/cache.h). Call once per operate(), before the
+ * vendor's own prefetcher-operate entry point, so every import gets
+ * backpressure by default; only imports whose vendor code actually reads
+ * PQ/MSHR (currently MLOP, IP-stride) are affected behaviorally -- IPCP/SPP/
+ * next-line never reference these fields, so wiring them is a harmless no-op
+ * there. */
+void shim_wire_backpressure(uint32_t proc_id, Level level, uint32_t* pq_size, uint32_t* pq_occupancy,
+                            uint32_t* mshr_size, uint32_t* mshr_occupancy);
+
 /* Fire Scarab stat id `stat_id` for core `proc_id`, or no-op if `stat_id` < 0.
  * Universal hook so any shim component (cache.h's note_pref_hit/note_pref_fill,
  * etc.) can surface an internal feedback event as a stat WITHOUT including the C
