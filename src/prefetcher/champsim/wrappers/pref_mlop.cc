@@ -77,10 +77,14 @@ extern "C" void pref_mlop_init(HWP* hwp) {
   g_mlop._hwp_id = hwp->hwp_info->id;
   g_mlop._stat_issued = PREF_SHIM_ISSUED;
   g_mlop._stat_qfull = PREF_SHIM_QFULL;
-  /* Cache geometry MLOP uses only to size its access-map table. */
-  g_mlop.NUM_SET = 1024;
-  g_mlop.NUM_WAY = 16;
-  g_mlop.l1d_prefetcher_initialize();
+  /* Construct MLOP from params instead of calling the vendor initializer, which
+   * hardcodes its knobs as function-local consts. All are ctor args and MLOP
+   * sizes its tables with vectors, so nothing in the vendor file changes. This
+   * also retires the fake NUM_SET/NUM_WAY: AMT_SIZE is now passed directly. */
+  cs_mlop::L1D_PREF_2::prefetchers = std::vector<cs_mlop::L1D_PREF_2::MLOP>(
+      NUM_CPUS, cs_mlop::L1D_PREF_2::MLOP(PAGE_SIZE / BLOCK_SIZE, PREF_MLOP_AMT_SIZE, PREF_MLOP_DEGREE,
+                                          PREF_MLOP_NUM_UPDATES, PREF_MLOP_L1D_THRESH, PREF_MLOP_L2C_THRESH,
+                                          PREF_MLOP_LLC_THRESH, PREF_MLOP_DEBUG_LEVEL));
   g_mlop_inited = true;
 }
 

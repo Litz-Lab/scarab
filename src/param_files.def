@@ -47,3 +47,4 @@
 #include "prefetcher/pref_markov.param.def"
 #include "prefetcher/champsim/pref_mlop.param.def"
 #include "prefetcher/champsim/pref_ipstride.param.def"
+#include "prefetcher/champsim/pref_spp.param.def"

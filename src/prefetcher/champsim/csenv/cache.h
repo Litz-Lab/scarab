@@ -52,6 +52,11 @@ class CACHE {
                                block when upgrading FILL_L2->FILL_L1; on a single
                                Scarab level those are redundant). */
   std::unordered_set<uint64_t> _op_issued;  /* blocks issued in the current operate */
+  /* Cap on prefetches issued per operate; 0 = uncapped. Lets a wrapper expose a
+     degree knob for a vendor whose PREFETCH_DEGREE is a #define inside its
+     byte-identical .inc (reachable downward only). */
+  int _max_pf_per_op;
+  uint32_t _op_pf_count;
   /* Inter-level metadata channel: when set, every prefetch_line() this component
    * issues also forwards (pf_addr, ip, metadata) downstream. Used to feed a
    * cooperating next-level component (e.g. IPCP L1 -> L2), reproducing ChampSim's
@@ -105,6 +110,7 @@ class CACHE {
       : cpu(0), NAME("champsim"), NUM_SET(1024), NUM_WAY(16),
         PQ{0u, (1u << 20)}, MSHR{0u, (1u << 20)},
         _level(champsim::Level::UMLC), _route_by_fill(false), _dedup_per_op(false),
+        _max_pf_per_op(0), _op_pf_count(0),
         _hwp_id(0), _stat_issued(-1), _stat_qfull(-1),
         _stat_useful(-1), _stat_fill(-1), _cur_pref_hit(0) {
     _blk.prefetch = 0;
@@ -120,9 +126,12 @@ class CACHE {
       if (!_op_issued.insert(blk).second)
         return 1;  /* already issued this operate; suppress redundant re-issue */
     }
+    if (_max_pf_per_op && _op_pf_count >= (uint32_t)_max_pf_per_op)
+      return 0; /* looks like a full queue to the vendor, which stops issuing */
     champsim::Level tgt = _route_by_fill ? champsim::level_from_fill(fill_level) : _level;
     int ok = champsim::shim_issue(tgt, cpu, _hwp_id, pf_addr, _stat_issued, _stat_qfull);
     if (ok) {
+      _op_pf_count++;
       /* Remember block->class (from pf_metadata bits 8-11) so the eventual fill and
        * demand pref-hit can be attributed to the issuing class. pref_filled is bumped
        * at FILL (note_pref_fill), not here -- counting every issue overcounts (lookahead
@@ -135,7 +144,11 @@ class CACHE {
       _downstream_op(pf_addr, ip, metadata);
     return ok;
   }
-  void begin_operate() { if (_dedup_per_op) _op_issued.clear(); }
+  void begin_operate() {
+    _op_pf_count = 0;
+    if (_dedup_per_op)
+      _op_issued.clear();
+  }
   uint32_t get_occupancy(uint8_t /*queue_type*/, uint64_t /*addr*/) { return 0; }
   uint32_t get_size(uint8_t /*queue_type*/, uint64_t /*addr*/) { return PQ.SIZE; }
 

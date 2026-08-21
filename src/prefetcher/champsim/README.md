@@ -60,6 +60,36 @@ in sets its training level, the DEST_* token its destination.
 | IP-stride | `ip_stride.l2c` | `TYPE_IPSTRIDE` | DPC2 baseline; `--pref_ipstride_route_by_fill 1` optional |
 | next-line | `next_line.l2c` | `TYPE_NEXTLINE` | ChampSim's sequential/streaming baseline |
 
+## Vendor tunables exposed as params
+
+The ChampSim constants were tuned against ChampSim's hierarchy, not Scarab's, so the ones with real
+behavioural leverage are Scarab params. **Every default is the vendor value**, so a default run is
+unchanged; only sweeps differ. No vendor `.inc` is edited — two mechanisms make that possible:
+
+- knobs the vendor passes as constructor args (MLOP) are set by the wrapper, which builds the
+  prefetcher itself instead of calling the vendor's `*_initialize()`;
+- knobs the vendor `#define`s in a header it includes (SPP) are repointed by a prelude header
+  (`SHIM_VENDOR_PRELUDE`) that pre-includes that header inside the import namespace and redefines
+  them — the vendor's own `#include` then no-ops on its include guard.
+
+| param | default | vendor site |
+|---|---|---|
+| `--pref_mlop_degree` | 16 | `PREFETCH_DEGREE` |
+| `--pref_mlop_num_updates` | 500 | `NUM_UPDATES` |
+| `--pref_mlop_amt_size` | 8192 | `AMT_SIZE` (was derived from the fake `NUM_SET`x`NUM_WAY`) |
+| `--pref_mlop_{l1d,l2c,llc}_thresh` | 0.40 / 0.30 / 2.00 | `L1D_THRESH` / `L2C_THRESH` / `LLC_THRESH` |
+| `--pref_mlop_debug_level` | 0 | `DEBUG_LEVEL` |
+| `--pref_spp_pf_thresh` | 25 | `PF_THRESHOLD` |
+| `--pref_spp_fill_thresh` | 90 | `FILL_THRESHOLD` (L2-vs-LLC split) |
+| `--pref_ipstride_max_pf_per_op` | 0 (uncapped) | caps `PREFETCH_DEGREE` (3) downward |
+
+Not exposable this way, and why: table extents (SPP `PT_SET`/`FILTER_SET`/`MAX_GHR_ENTRY`,
+ip-stride `IP_TRACKER_COUNT`, IPCP's `ipcp_table_sizes.h`) are array bounds, so they need a
+compile-time constant; SPP's `LOOKAHEAD_ON`/`FILTER_ON`/`GHR_ON` are `#ifdef`-tested; and constants
+`#define`d inside a byte-identical `.inc` (ip-stride's `PREFETCH_DEGREE`, IPCP's in-file defines)
+cannot be intercepted by the preprocessor at all — the vendor definition wins at its own line.
+Raising those requires editing vendor source, which this shim deliberately does not do.
+
 ## Add a new ChampSim prefetcher FOO
 
 1. Copy unmodified `foo.<lvl>_pref` → `csenv/foo.<lvl>.inc` (+ any private `.h` it includes).

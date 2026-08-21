@@ -36,6 +36,9 @@
  *   SHIM_EXTRA_INIT          statements pasted into init (e.g. set _route_by_fill from a param)
  *   SHIM_EXTRA_OP            statements pasted before each operate (e.g. MSHR backpressure wiring)
  *   SHIM_GEN_UL1_CACHE_FILL  also generate pref_<name>_ul1_cache_fill -> vendor l2c_prefetcher_cache_fill
+ *   SHIM_VENDOR_PRELUDE      header included inside the import namespace before the
+ *                            vendor file, to pre-include a vendor header and repoint
+ *                            its #defines at Scarab params (see pref_spp_prelude.h)
  *
  * Each import must be its OWN translation unit: the vendor file carries
  * file-scope state and CACHE method definitions, so the template wraps it in
@@ -81,6 +84,9 @@ extern "C" {
 #define SHIM_STR(x) SHIM_STR2(x)
 
 namespace SHIM_CAT(cs_, SHIM_NAME) {
+#ifdef SHIM_VENDOR_PRELUDE
+#include SHIM_VENDOR_PRELUDE
+#endif
 #include SHIM_VENDOR
 }  // namespace SHIM_CAT(cs_,SHIM_NAME)
 
@@ -136,6 +142,7 @@ static inline void shim_op(uns8 proc_id, Addr lineAddr, Addr loadPC, uint8_t cac
   STAT_EVENT(proc_id, PREF_SHIM_OPERATE);
   champsim::tick(proc_id);
   g_shim.cpu = proc_id;
+  g_shim.begin_operate();
 #ifdef SHIM_EXTRA_OP
   SHIM_EXTRA_OP
 #endif

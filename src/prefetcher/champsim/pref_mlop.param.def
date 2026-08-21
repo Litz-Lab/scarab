@@ -12,3 +12,18 @@
  * (collapsed) -- best IPC in Scarab's hierarchy. TRUE: faithful multi-fill, route
  * each prefetch by its own fill level (FILL_L1->L1D, FILL_L2->L2). */
 DEF_PARAM(pref_mlop_route_by_fill, PREF_MLOP_ROUTE_BY_FILL, Flag, Flag, FALSE, )
+
+/* Vendor knobs, hoisted out of mlop_dpc3.l1d's l1d_prefetcher_initialize() (they
+ * are function-local consts there, but all are MLOP ctor args). Defaults are the
+ * ChampSim/DPC3 values; the port to Scarab's hierarchy (1-way DL0 by default)
+ * makes them worth sweeping. */
+DEF_PARAM(pref_mlop_degree, PREF_MLOP_DEGREE, uns, uns, 16, )
+DEF_PARAM(pref_mlop_num_updates, PREF_MLOP_NUM_UPDATES, uns, uns, 500, )
+/* Access-map table entries. Vendor derives 32*NUM_SET*NUM_WAY/BLOCKS_IN_ZONE;
+ * 8192 == the shim's previous fake 1024x16 geometry. */
+DEF_PARAM(pref_mlop_amt_size, PREF_MLOP_AMT_SIZE, uns, uns, 8192, )
+/* Offsets with score >= thresh*NUM_UPDATES prefetch into that level (>1 = off). */
+DEF_PARAM(pref_mlop_l1d_thresh, PREF_MLOP_L1D_THRESH, float, float, 0.40, )
+DEF_PARAM(pref_mlop_l2c_thresh, PREF_MLOP_L2C_THRESH, float, float, 0.30, )
+DEF_PARAM(pref_mlop_llc_thresh, PREF_MLOP_LLC_THRESH, float, float, 2.00, )
+DEF_PARAM(pref_mlop_debug_level, PREF_MLOP_DEBUG_LEVEL, uns, uns, 0, )

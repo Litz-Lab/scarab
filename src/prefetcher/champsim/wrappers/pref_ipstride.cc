@@ -12,7 +12,9 @@
 #define SHIM_NAME ipstride
 #define SHIM_VENDOR "prefetcher/champsim/csenv/ip_stride.l2c.inc"
 #define SHIM_API_L2C 1
-#define SHIM_EXTRA_INIT g_shim._route_by_fill = PREF_IPSTRIDE_ROUTE_BY_FILL;
+#define SHIM_EXTRA_INIT                                \
+  g_shim._route_by_fill = PREF_IPSTRIDE_ROUTE_BY_FILL; \
+  g_shim._max_pf_per_op = PREF_IPSTRIDE_MAX_PF_PER_OP;
 #define SHIM_EXTRA_OP                        \
   g_shim.MSHR.SIZE = MEM_REQ_BUFFER_ENTRIES; \
   g_shim.MSHR.occupancy = mem_get_req_count(proc_id);
