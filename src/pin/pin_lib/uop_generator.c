@@ -1073,6 +1073,7 @@ void convert_dyn_uop(uns8 proc_id, Inst_Info* info, ctype_pin_inst* pi, Trace_Uo
     if (info->table_info.mem_type == MEM_ST) {
       trace_uop->store_seq_num = info->trace_info.store_seq_num;
       ASSERT(proc_id, trace_uop->store_seq_num < MAX_ST_NUM);
+      ASSERT(proc_id, trace_uop->store_seq_num < pi->num_st);
       trace_uop->va = pi->st_vaddr[trace_uop->store_seq_num];
       DEBUG(proc_id,
             "Generating a store: inst @%llx opcode: %s num_ld: %i "
