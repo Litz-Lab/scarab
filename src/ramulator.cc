@@ -222,6 +222,9 @@ int ramulator_send(Mem_Req* scarab_req) {
   if (is_sent) {
     DEBUG(scarab_req->proc_id, "Ramulator: The request has been enqueued.\n");
   } else {
+    STAT_EVENT(scarab_req->proc_id, RAMULATOR_QUEUE_FULL);
+    if (mem_req_type_is_demand(scarab_req->type))
+      STAT_EVENT(scarab_req->proc_id, DEMAND_DRAMQ_STALL);
     DEBUG(scarab_req->proc_id, "Ramulator: The request has been rejected. Queue full?\n");
   }
 
