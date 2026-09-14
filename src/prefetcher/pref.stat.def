@@ -71,9 +71,7 @@ DEF_STAT(PREF_DC_HIT_NOSEND                , COUNT   ,     NO_RATIO)
 
 DEF_STAT(PREF_WBQDC_HIT_NOSEND             , COUNT   ,     NO_RATIO)
 
-DEF_STAT(PREF_MLCQ_STALL                   , COUNT   ,     NO_RATIO)
 
-DEF_STAT(PREF_L1Q_STALL                    , COUNT   ,     NO_RATIO)
 
 DEF_STAT(PREF_UMLC_REQ_SEND_QUEUE_STALL    , COUNT   ,     NO_RATIO)
 
