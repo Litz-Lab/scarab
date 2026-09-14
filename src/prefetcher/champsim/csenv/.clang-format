@@ -1,0 +1,8 @@
+# Vendored ChampSim prefetcher sources (*.inc) and the fake-environment headers
+# that wrap them are kept BYTE-IDENTICAL to upstream — the shim's whole premise is
+# dropping in UNMODIFIED vendor code (diff vs the original ChampSim artifact is
+# empty). Disable clang-format for this directory so the formatter and the CI
+# clang-format-diff check leave these files alone. The shim's own code (one level
+# up: champsim_shim.*, wrappers/, pref_champsim.h) is still formatted normally.
+DisableFormat: true
+SortIncludes: false

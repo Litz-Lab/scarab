@@ -1,0 +1,19 @@
+/* Copyright 2020 HPS/SAFARI Research Groups */
+/* -*- Mode: c -*- */
+/* Params for the ChampSim-shim SPP (vendor: spp.l2c + spp.h). Enable/level via
+ * the framework instance lists: put TYPE_SPP in exactly one of
+ * --pref_{dcache,mlc,l1}_prefetchers with its DEST_* destination token.
+ *
+ * These repoint the vendor's confidence thresholds (spp.h #defines) at Scarab
+ * params without touching either vendor file -- wrappers/pref_spp_prelude.h
+ * pre-includes spp.h inside the import namespace and redefines them. Only
+ * constants read in comparisons can be exposed this way; SPP's table extents
+ * (ST_SET/ST_WAY, PT_SET/PT_WAY, FILTER_SET, MAX_GHR_ENTRY) are array bounds
+ * and its feature toggles (LOOKAHEAD_ON, FILTER_ON, GHR_ON) are #ifdef-tested,
+ * so both stay compile-time. Defaults are the vendor values. */
+
+/* Minimum confidence to issue a prefetch at all, and to route it to L2 rather
+ * than the LLC (spp.l2c.inc:118,122 -- FILL_L2 vs FILL_LLC). ChampSim's L2/LLC
+ * latencies are not Scarab's, so the split point is worth sweeping. */
+DEF_PARAM(pref_spp_pf_thresh, PREF_SPP_PF_THRESH, uns, uns, 25, )
+DEF_PARAM(pref_spp_fill_thresh, PREF_SPP_FILL_THRESH, uns, uns, 90, )

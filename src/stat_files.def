@@ -37,4 +37,5 @@
 #include "prefetcher/l2l1pref.stat.def" 
 #include "power/power.stat.def"
 #include "prefetcher/pref.stat.def"
+#include "prefetcher/champsim/pref_champsim.stat.def"
 

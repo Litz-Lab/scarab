@@ -1,0 +1,10 @@
+/* Copyright 2020 HPS/SAFARI Research Groups */
+/* Shared counters for all ChampSim-shim prefetchers. When several shim
+ * imports run together their events aggregate here; add per-import stats
+ * only when a breakdown is actually needed. */
+DEF_STAT(PREF_SHIM_OPERATE,    COUNT, NO_RATIO)
+DEF_STAT(PREF_SHIM_ISSUED,     COUNT, NO_RATIO)
+DEF_STAT(PREF_SHIM_QFULL,      COUNT, NO_RATIO)
+DEF_STAT(PREF_SHIM_USEFUL,     COUNT, NO_RATIO)
+DEF_STAT(PREF_SHIM_FILL,       COUNT, NO_RATIO)
+DEF_STAT(PREF_SHIM_CACHE_FILL, COUNT, NO_RATIO)
