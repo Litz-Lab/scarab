@@ -83,6 +83,10 @@ void ScarabWrapper::finish(void) {
   Stats::statlist.printall();
 }
 
+int ScarabWrapper::readq_free(long addr) {
+  return mem->readq_free(addr);
+}
+
 int ScarabWrapper::get_chip_width() const {
   return mem->get_chip_width();
 }

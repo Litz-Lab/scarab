@@ -170,6 +170,14 @@ void init_configs() {
 int ramulator_send(Mem_Req* scarab_req) {
   Request req;
 
+  /* Keep read-queue entries free for demands on the channel this address maps to.
+     Refusing here is backpressure: the caller leaves the request queued and retries. */
+  if (RAMULATOR_PREF_RESERVE && mem_req_type_is_prefetch(scarab_req->type) &&
+      wrapper->readq_free(scarab_req->phys_addr) <= (int)RAMULATOR_PREF_RESERVE) {
+    STAT_EVENT(scarab_req->proc_id, PREF_DRAMQ_STALL);
+    return false;
+  }
+
   to_ramulator_req(scarab_req, &req);
 
   // printf("Ramulator: Received a (%s) request to address %llu\n",
