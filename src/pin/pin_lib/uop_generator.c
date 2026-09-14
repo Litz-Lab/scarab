@@ -638,6 +638,15 @@ static void add_rep_uops(ctype_pin_inst* pi, Trace_Uop** trace_uop, uns* idx) {
   }
 }
 
+/* The uop decomposition depends on the number of memory operations performed by an instance,
+ * which is not a property of the encoding. For example, a REP string instruction executed with
+ * rcx == 0 has no memory accesses, while the same instruction at the same PC with rcx > 0 does.
+ * Since generate_uops() runs only once per interning key, the operation counts must be part of it;
+ * otherwise, the first decoded instance determines the uop shape for all subsequent instances. */
+static inline uint16_t mem_shape_of(const ctype_pin_inst* pi) {
+  return (uint16_t)((pi->num_ld << 8) | pi->num_st);
+}
+
 static Flag use_ld1_addr_regs(const uns8 proc_id, const compressed_op* pi, const uns load_seq_num) {
   if ((0 == load_seq_num) || pi->is_gather_scatter)
     return TRUE;
@@ -863,8 +872,9 @@ void convert_pinuop_to_t_uop(uns8 proc_id, ctype_pin_inst* pi, Trace_Uop** trace
     trace_uop[0]->info = info;
     convert_dyn_uop(proc_id, info, pi, trace_uop[0], info->table_info.mem_size, TRUE);
   } else {
+    const uint16_t mem_shape = mem_shape_of(pi);
     info = cpp_hash_table_access_create(proc_id, pi->instruction_addr, pi->inst_binary_lsb, pi->inst_binary_msb, 0,
-                                        &new_entry);
+                                        mem_shape, &new_entry);
     info->fake_inst = FALSE;
     info->fake_inst_reason = WPNM_NOT_IN_WPNM;
 
@@ -879,7 +889,7 @@ void convert_pinuop_to_t_uop(uns8 proc_id, ctype_pin_inst* pi, Trace_Uop** trace
       for (ii = 0; ii < num_uop; ii++) {
         if (ii > 0) {
           info = cpp_hash_table_access_create(proc_id, pi->instruction_addr, pi->inst_binary_lsb, pi->inst_binary_msb,
-                                              ii, &new_entry);
+                                              ii, mem_shape, &new_entry);
           info->fake_inst = FALSE;
           info->fake_inst_reason = WPNM_NOT_IN_WPNM;
         }
@@ -920,7 +930,7 @@ void convert_pinuop_to_t_uop(uns8 proc_id, ctype_pin_inst* pi, Trace_Uop** trace
       for (ii = 0; ii < num_uop; ii++) {
         if (ii > 0) {
           info = cpp_hash_table_access_create(proc_id, pi->instruction_addr, pi->inst_binary_lsb, pi->inst_binary_msb,
-                                              ii, &new_entry);
+                                              ii, mem_shape, &new_entry);
         }
         ASSERT(proc_id, !new_entry);
 
@@ -962,9 +972,9 @@ void convert_pinuop_to_t_uop(uns8 proc_id, ctype_pin_inst* pi, Trace_Uop** trace
     } else {
       unsigned char si_new = 0, so_new = 0;
       si = cpp_static_inst_access_create(proc_id, pi->instruction_addr, pi->inst_binary_lsb, pi->inst_binary_msb,
-                                         &si_new);
+                                         mem_shape_of(pi), &si_new);
       so = cpp_static_op_access_create(proc_id, pi->instruction_addr, pi->inst_binary_lsb, pi->inst_binary_msb, ii,
-                                       &so_new);
+                                       mem_shape_of(pi), &so_new);
       if (si_new)
         populate_static_inst_info(si, trace_uop[ii]->info, pi);
       if (so_new) {
