@@ -160,7 +160,7 @@ static Flag mem_adjust_matching_request(Mem_Req* req, Mem_Req_Type type, Addr ad
                                         Flag demand_hit_prefetch, Flag demand_hit_writeback,
                                         Mem_Queue_Entry** queue_entry, Counter new_priority, Flag ramulator_match);
 
-static inline Mem_Req* mem_allocate_req_buffer(uns proc_id, Mem_Req_Type type, Flag for_l1_writeback);
+static inline Mem_Req* mem_allocate_req_buffer(uns proc_id, Mem_Req_Type type);
 static Mem_Req* mem_kick_out_prefetch_from_queue(uns mem_bank, Mem_Queue* queue, Counter new_priority);
 static Mem_Req* mem_kick_out_prefetch_from_queues(uns mem_bank, Counter new_priority, uns queues_to_search);
 static Mem_Req* mem_kick_out_oldest_first_prefetch_from_queues(uns mem_bank, Counter new_priority,
@@ -303,7 +303,13 @@ void init_memory() {
      buffer has to cover every level at once. Taking mem_req_buffer_entries
      instead left the two levels' 64 MSHRs sharing 32 entries, which made the
      buffer the bottleneck rather than the levels it is meant to track. */
-  mem->req_buffers_per_core = HIER_MSHR_ON ? mlc_queue_size + l1_queue_size : MEM_REQ_BUFFER_ENTRIES;
+  /* A request holds its entry until it completes, which outlasts its queue slot:
+     once sent to DRAM it leaves the queue (req->queue = NULL) but stays allocated.
+     Cover both so the pool is an allocator, never an admission gate -- the
+     per-level queues are the MSHR resource. */
+  mem->req_buffers_per_core = HIER_MSHR_ON ? mlc_queue_size + l1_queue_size + RAMULATOR_READQ_ENTRIES +
+                                                 RAMULATOR_WRITEQ_ENTRIES
+                                           : MEM_REQ_BUFFER_ENTRIES;
   mem->total_mem_req_buffers = mem->req_buffers_per_core * (PRIVATE_MSHR_ON ? NUM_CORES : 1);
   /* Record it: the derived size is not a parameter, so PARAMS.out still shows
      mem_req_buffer_entries, which is no longer what the buffer is. */
@@ -2861,70 +2867,32 @@ Flag mem_adjust_matching_request(Mem_Req* req, Mem_Req_Type type, Addr addr, uns
 }
 
 /**************************************************************************************/
-/* mem_can_allocate_req_buffer: */
+/* mem_can_admit_req: */
 
-/* Entries held in reserve: a request outside the reserved class is refused once
-   free space falls to the reserve. Same rule queue_full_for_req() applies to the
-   queues. Signed on the free-list side, which is an int. */
-static inline Flag req_buffer_reserved(uns proc_id, uns reserve) {
-  if (PRIVATE_MSHR_ON)
-    return mem->num_req_buffers_per_core[proc_id] + reserve >= mem->req_buffers_per_core;
-  return mem->req_buffer_free_list.count <= (int)reserve;
-}
+/* Whether the level this request would enter can still take it. Callers that used
+   to consult the global request buffer want this: the per-level queues are the
+   MSHR resource, and a machine-wide count answers for levels the request never
+   touches. */
 
-Flag mem_can_allocate_req_buffer(uns proc_id, Mem_Req_Type type, Flag for_l1_writeback) {
-  if ((type == MRT_IPRF || type == MRT_DPRF || type == MRT_UOCPRF || type == MRT_FDIPPRFON || type == MRT_FDIPPRFOFF ||
-       type == MRT_FDIPPRFALT) &&
-      req_buffer_reserved(proc_id, MEM_REQ_BUFFER_DEMAND_RESERVE))
-    return FALSE;
-
-  if (type != MRT_WB && type != MRT_WB_NODIRTY && req_buffer_reserved(proc_id, MEM_REQ_BUFFER_WB_RESERVE))
-    return FALSE;
-
-  // to ensure deadlock freedom, we need to make sure that there will at least
-  // be space for a L1 (i.e., LLC) writeback, since this is the only type of
-  // request that is guaranteed not to cause additional write backs (and hence
-  // guaranteed to not require additional mem_req entries)
-  if (PRIVATE_MSHR_ON && mem->num_req_buffers_per_core[proc_id] + 1 >= mem->req_buffers_per_core) {
-    if (!for_l1_writeback) {
-      return FALSE;
-    } else {
-      ASSERT(proc_id, MRT_WB == type);
-    }
-
-  } else if (!PRIVATE_MSHR_ON && mem->req_buffer_free_list.count <= 1) {
-    if (!for_l1_writeback) {
-      return FALSE;
-    } else {
-      ASSERT(proc_id, MRT_WB == type);
-    }
-  }
-
-  if (PRIVATE_MSHR_ON) {
-    ASSERT(proc_id, mem->num_req_buffers_per_core[proc_id] <= mem->req_buffers_per_core);
-    if (mem->num_req_buffers_per_core[proc_id] == mem->req_buffers_per_core)
-      return FALSE;
-  }
-
-  if (mem->req_count == mem->total_mem_req_buffers) {
-    ASSERT(0, sl_list_remove_head(&mem->req_buffer_free_list) == 0);
-    return FALSE;
-  }
-
-  return TRUE;
+Flag mem_can_admit_req(uns proc_id, Mem_Req_Type type) {
+  Mem_Queue* queue = MLC_PRESENT ? &mem->mlc_queue : &mem->l1_queue;
+  return !queue_full_for_req(queue, type);
 }
 
 /**************************************************************************************/
 /* mem_allocate_req_buffer: */
 /* If queue is specified, only allocates if its entry_count < size */
 
-static inline Mem_Req* mem_allocate_req_buffer(uns proc_id, Mem_Req_Type type, Flag for_l1_writeback) {
-  if (!mem_can_allocate_req_buffer(proc_id, type, for_l1_writeback))
-    return FALSE;
-
+static inline Mem_Req* mem_allocate_req_buffer(uns proc_id, Mem_Req_Type type) {
   int* reqbuf_num_ptr = sl_list_remove_head(&mem->req_buffer_free_list);
 
-  ASSERT(0, reqbuf_num_ptr);
+  /* The pool covers both queues plus everything in flight to DRAM, so nothing can
+     hold an entry without having been admitted somewhere that bounds it. Running
+     dry means that sizing is wrong, not that the caller should back off. */
+  ASSERTM(proc_id, reqbuf_num_ptr,
+          "Request buffer exhausted (%d entries) allocating %s; the pool must cover "
+          "mlc_queue + l1_queue + readq + writeq\n",
+          mem->total_mem_req_buffers, Mem_Req_Type_str(type));
   ASSERT(0, mem->req_buffer[*reqbuf_num_ptr].state == MRS_INV);
   mem->num_req_buffers_per_core[proc_id] += 1;
   update_mem_req_occupancy_counter(type, +1);
@@ -3426,7 +3394,7 @@ Flag new_mem_req(Mem_Req_Type type, uns8 proc_id, Addr addr, uns size, uns delay
 
   /* Step 3: Not already in request buffer. Figure out if a free request buffer
    * exists */
-  new_req = mem_allocate_req_buffer(proc_id, type, FALSE);
+  new_req = mem_allocate_req_buffer(proc_id, type);
 
   /* Step 4: No free request buffer - If demand, try to kick
      something out from the l1 access queue (not bus_out and
@@ -3641,7 +3609,7 @@ Flag new_mem_dc_wb_req(Mem_Req_Type type, uns8 proc_id, Addr addr, uns size, uns
 
   /* Step 3: Not already in request buffer. Figure out if a free request buffer
    * exists */
-  new_req = mem_allocate_req_buffer(proc_id, type, FALSE);
+  new_req = mem_allocate_req_buffer(proc_id, type);
 
   /* Step 4: No free request buffer - If demand, try to kick
      something out from the l1 access queue (not bus_out and
@@ -3725,7 +3693,7 @@ static Flag new_mem_mlc_wb_req(Mem_Req_Type type, uns8 proc_id, Addr addr, uns s
   }
 
   /* Step 3: Not already in request buffer. Figure out if a free request buffer exists */
-  new_req = mem_allocate_req_buffer(proc_id, type, FALSE);
+  new_req = mem_allocate_req_buffer(proc_id, type);
 
   /* Step 4: No free request buffer - If demand, try to kick
      something out from the l1 access queue (not bus_out and
@@ -3811,7 +3779,7 @@ static Flag new_mem_l1_wb_req(Mem_Req_Type type, uns8 proc_id, Addr addr, uns si
    * exists */
 
   ASSERT(proc_id, type == MRT_WB);
-  new_req = mem_allocate_req_buffer(proc_id, type, TRUE);
+  new_req = mem_allocate_req_buffer(proc_id, type);
 
   /* Step 4: No free request buffer - If demand, try to kick
      something out from the l1 access queue (not bus_out and
