@@ -973,19 +973,6 @@ void FDIP::update() {
         insert_pref_candidate_to_seniority_ftq(line_addr, op->bp_pred_info->pred_global_hist);
       if (!bp_id && (FDIP_UTILITY_HASH_ENABLE || FDIP_UC_SIZE || FDIP_BLOOM_FILTER))
         INC_STAT_EVENT(proc_id, FDIP_SENIORITY_FTQ_ACCUMULATED, udp->seniority_ftq.size());
-      Flag mem_req_buf_full = FALSE;
-      if (emit_new_prefetch && !line && !mem_req && !queue_can_admit_req(proc_id, mem_type)) {
-        mem_req_buf_full = TRUE;
-        // should keep running ahead without breaking the loop by failing to emit a prefetch when FDIP is only one FTQ
-        // entry ahead where the backend fetches the FT soon freeze FDIP when mem_req buffer hits the limit. This should
-        // rarely happens if mem_req_buffer_entries and ramulator_readq_entries are big enough.
-        if (FDIP_FREEZE_AT_MEM_BUF_LIMIT && decoupled_fe_ftq_iter_ft_offset(dfe, ftq_idx) > 1) {
-          DEBUG(proc_id, "[FDIP%u] Break due to full mem_req buf\n", bp_id);
-          break_reason = BR_FULL_MEM_REQ_BUF;
-          break;
-        }
-      }
-
       if (emit_new_prefetch)
         STAT_EVENT(proc_id, FDIP_DECIDE_PREF_ONPATH0 + FDIP_PREF_STAT_COUNT * bp_id + op->off_path);
 
@@ -1020,7 +1007,6 @@ void FDIP::update() {
           success =
               new_mem_req(mem_type, proc_id, line_addr, ICACHE_LINE_SIZE, 0, NULL, instr_fill_line, unique_count, 0);
           // ICACHE_LINE_SIZE, 0, NULL, instr_fill_line, unique_count++, 0); // bug?
-          // A queue slot should be available since it is checked by queue_can_admit_req for a new prefetch
           if (success == Mem_Queue_Req_Result::SUCCESS_NEW) {
             STAT_EVENT(proc_id, FDIP_NEW_PREFETCHES_ONPATH0 + FDIP_PREF_STAT_COUNT * bp_id + op->off_path);
             DEBUG(proc_id, "[FDIP%u] Success to emit a new prefetch for %llx\n", bp_id, line_addr);
@@ -1031,16 +1017,14 @@ void FDIP::update() {
             STAT_EVENT(proc_id, FDIP_PREF_MSHR_PROBE_HIT_ONPATH0 + FDIP_PREF_STAT_COUNT * bp_id + op->off_path);
             DEBUG(proc_id, "[FDIP%u] Success to merge a prefetch for %llx\n", bp_id, line_addr);
           } else if (success == Mem_Queue_Req_Result::FAILED) {
-            // new_mem_req() refuses for two reasons: no free request-buffer entry,
-            // or the target queue is full (its Step 2.5 check, REJECTED_QUEUE_*).
-            // mem_req_buf_full only reflects the first, so a queue rejection is a
-            // legitimate failure -- this used to assert on it, which aborted any
-            // run with a queue sized smaller than the request buffer (e.g.
-            // hier_mshr_on with independent queue_*_size values). Count which
-            // resource ran out instead.
-            STAT_EVENT(proc_id, mem_req_buf_full ? FDIP_PREF_FAILED_REQ_BUF_FULL : FDIP_PREF_FAILED_QUEUE_FULL);
+            // The target queue is full; the request buffer cannot run dry.
+            STAT_EVENT(proc_id, FDIP_PREF_FAILED_QUEUE_FULL);
             STAT_EVENT(proc_id, FDIP_PREF_FAILED_ONPATH0 + FDIP_PREF_STAT_COUNT * bp_id + op->off_path);
             DEBUG(proc_id, "[FDIP%u] Failed to emit a prefetch for %llx\n", bp_id, line_addr);
+            if (FDIP_FREEZE_AT_MEM_BUF_LIMIT && decoupled_fe_ftq_iter_ft_offset(dfe, ftq_idx) > 1) {
+              break_reason = BR_FULL_MEM_REQ_BUF;
+              break;
+            }
           }
         }
         if (!bp_id)
