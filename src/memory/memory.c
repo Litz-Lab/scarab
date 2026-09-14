@@ -1428,6 +1428,20 @@ static Flag mem_process_mlc_miss_access(Mem_Req* req, Mem_Queue_Entry* mlc_queue
 /* mem_complete_l1_access: */
 /* Returns TRUE if l1 access is complete and needs to be removed from l1_queue */
 
+/* A landed prefetch turns the demand into a hit above, so nothing descends to train
+   the LLC. Train on the prefetch instead. DEST_L1 excluded: no self-training. */
+static inline Flag pref_trains_ul1(Mem_Req* req) {
+  if (req->type == MRT_DFETCH || req->type == MRT_DSTORE)
+    return TRUE;
+  if (PREF_I_TOGETHER && req->type == MRT_IFETCH)
+    return TRUE;
+  if (req->type != MRT_DPRF)
+    return FALSE;
+  if (PREF_TRAIN_ON_PREF_MISSES)
+    return TRUE;
+  return PREF_TRAIN_UL1_ON_UPPER_PREF && req->destination != DEST_NONE && req->destination < DEST_L1;
+}
+
 static Flag mem_complete_l1_access(Mem_Req* req, Mem_Queue_Entry* l1_queue_entry, int* out_queue_insertion_count,
                                    int* reserved_entry_count) {
   Addr line_addr;
@@ -1523,9 +1537,7 @@ static Flag mem_complete_l1_access(Mem_Req* req, Mem_Queue_Entry* l1_queue_entry
     if (!l1_hit_access)
       access_done = FALSE;
     else {
-      if (!PREF_ORACLE_TRAIN_ON &&
-          ((req->type == MRT_DFETCH) || (req->type == MRT_DSTORE) || (PREF_I_TOGETHER && req->type == MRT_IFETCH) ||
-           (PREF_TRAIN_ON_PREF_MISSES && req->type == MRT_DPRF))) {
+      if (!PREF_ORACLE_TRAIN_ON && pref_trains_ul1(req)) {
         // Train the Data prefetcher
         ASSERT(req->proc_id, PERFECT_L1 || data);
         ASSERT(req->proc_id, PERFECT_L1 || req->proc_id == data->proc_id);
@@ -1663,9 +1675,7 @@ static Flag mem_complete_l1_access(Mem_Req* req, Mem_Queue_Entry* l1_queue_entry
       }
       //(*out_queue_insertion_count) += 1;
 
-      if (!PREF_ORACLE_TRAIN_ON &&
-          ((req->type == MRT_DFETCH) || (req->type == MRT_DSTORE) || (PREF_I_TOGETHER && req->type == MRT_IFETCH) ||
-           (PREF_TRAIN_ON_PREF_MISSES && req->type == MRT_DPRF))) {
+      if (!PREF_ORACLE_TRAIN_ON && pref_trains_ul1(req)) {
         // Train the Data prefetcher
         pref_ul1_miss(req->proc_id, req->addr, req->loadPC, req->global_hist);
       }

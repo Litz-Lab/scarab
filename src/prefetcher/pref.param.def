@@ -96,6 +96,10 @@ DEF_PARAM( pref_report_pref_match_as_hit       , PREF_REPORT_PREF_MATCH_AS_HIT  
 DEF_PARAM( pref_update_on_wrongpath            , PREF_UPDATE_ON_WRONGPATH            , Flag            , Flag               , TRUE      ,    )
 
 DEF_PARAM( pref_train_on_pref_misses           , PREF_TRAIN_ON_PREF_MISSES           , Flag            , Flag               , FALSE     ,    )
+/* Let a prefetch aimed above the LLC train the LLC prefetcher, in place of the demand
+   it absorbed. Excludes DEST_L1, so unlike pref_train_on_pref_misses it cannot
+   self-train. Inert without a DEST_DCACHE/DEST_MLC prefetcher. */
+DEF_PARAM( pref_train_ul1_on_upper_pref        , PREF_TRAIN_UL1_ON_UPPER_PREF        , Flag            , Flag               , TRUE      ,    )
 DEF_PARAM( pref_oracle_train_on                , PREF_ORACLE_TRAIN_ON                , Flag            , Flag               , FALSE     ,    )
 
      // Throttling Stuff
