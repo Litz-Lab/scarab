@@ -103,6 +103,8 @@ typedef struct Mem_Queue_struct {
   int entry_count;
   int reserved_entry_count; /* for HIER_MSHR_ON */
   uns size;
+  /* Admission watermarks; see queue_full_for_req(). */
+  uns wb_reserve;
   char name[20];
   Mem_Queue_Type type;
 } Mem_Queue;
