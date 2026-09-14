@@ -974,7 +974,7 @@ void FDIP::update() {
       if (!bp_id && (FDIP_UTILITY_HASH_ENABLE || FDIP_UC_SIZE || FDIP_BLOOM_FILTER))
         INC_STAT_EVENT(proc_id, FDIP_SENIORITY_FTQ_ACCUMULATED, udp->seniority_ftq.size());
       Flag mem_req_buf_full = FALSE;
-      if (emit_new_prefetch && !line && !mem_req && !mem_can_allocate_req_buffer(proc_id, mem_type, FALSE)) {
+      if (emit_new_prefetch && !line && !mem_req && !mem_can_admit_req(proc_id, mem_type)) {
         mem_req_buf_full = TRUE;
         // should keep running ahead without breaking the loop by failing to emit a prefetch when FDIP is only one FTQ
         // entry ahead where the backend fetches the FT soon freeze FDIP when mem_req buffer hits the limit. This should
@@ -1020,7 +1020,7 @@ void FDIP::update() {
           success =
               new_mem_req(mem_type, proc_id, line_addr, ICACHE_LINE_SIZE, 0, NULL, instr_fill_line, unique_count, 0);
           // ICACHE_LINE_SIZE, 0, NULL, instr_fill_line, unique_count++, 0); // bug?
-          // A buffer entry should be available since it is checked by mem_can_allocate_req_buffer for a new prefetch
+          // A queue slot should be available since it is checked by mem_can_admit_req for a new prefetch
           if (success == Mem_Queue_Req_Result::SUCCESS_NEW) {
             STAT_EVENT(proc_id, FDIP_NEW_PREFETCHES_ONPATH0 + FDIP_PREF_STAT_COUNT * bp_id + op->off_path);
             DEBUG(proc_id, "[FDIP%u] Success to emit a new prefetch for %llx\n", bp_id, line_addr);

@@ -199,7 +199,6 @@ DEF_PARAM(promote_to_higher_priority_mem_req_type,
 // writebacks. queue_wb_reserve applies the same rule per queue.
 DEF_PARAM(mem_req_buffer_demand_reserve, MEM_REQ_BUFFER_DEMAND_RESERVE, uns,
           uns, 0, )
-DEF_PARAM(mem_req_buffer_wb_reserve, MEM_REQ_BUFFER_WB_RESERVE, uns, uns, 2, )
 
 // Queue entries held in reserve for writebacks, as the mem_req_buffer_*_reserve
 // parameters do for the request buffer. Carved out of the configured size; 0 disables.
