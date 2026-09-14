@@ -68,6 +68,9 @@ DEF_PARAM(ramulator_scheduling_policy    , RAMULATOR_SCHEDULING_POLICY          
 // Request Queues
 DEF_PARAM(ramulator_readq_entries        , RAMULATOR_READQ_ENTRIES                 , uns     , uns    , 32                   , ) 
 DEF_PARAM(ramulator_writeq_entries       , RAMULATOR_WRITEQ_ENTRIES                , uns     , uns    , 32                   , ) 
+/* Read-queue entries on a channel that a prefetch may not take, leaving them for
+   demands. 0 disables. */
+DEF_PARAM(ramulator_pref_reserve         , RAMULATOR_PREF_RESERVE                  , uns     , uns    , 0                    , )
 
 // Misc.
 DEF_PARAM(ramulator_record_cmd_trace     , RAMULATOR_REC_CMD_TRACE                 , char*   , string , "off"              , )

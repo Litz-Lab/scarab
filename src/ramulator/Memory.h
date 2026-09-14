@@ -56,6 +56,7 @@ public:
     virtual void tick() = 0;
     virtual bool send(Request req) = 0;
     virtual int pending_requests() = 0;
+    virtual int readq_free(long addr) = 0;
     virtual void finish(void) = 0;
     virtual long page_allocator(long addr, int coreid) = 0;
     virtual void record_core(int coreid) = 0;
@@ -401,6 +402,19 @@ public:
         }
 
         return false;
+    }
+
+    /* Free entries in the read queue of the channel this address maps to. */
+    int readq_free(long addr) {
+      int ch = 0;
+      if (type == Type::RoBaRaCoCh) {
+        long a = addr;
+        clear_lower_bits(a, tx_bits);
+        ch = slice_lower_bits(a, addr_bits[0]);
+      }
+      if (ch < 0 || ch >= (int)ctrls.size())
+        ch = 0;
+      return (int)ctrls[ch]->readq.max - (int)ctrls[ch]->readq.size();
     }
 
     int pending_requests()

@@ -50,6 +50,9 @@ public:
     int get_chip_size()  const;
     int get_num_chips()  const;
     int get_chip_row_buffer_size() const;
+
+    /* Free read-queue entries on the channel this address maps to. */
+    int readq_free(long addr);
 };
 
 } /*namespace ramulator*/
