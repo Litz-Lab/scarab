@@ -1907,7 +1907,7 @@ static void mem_process_mlc_reqs() {
   int l1_queue_insertion_count = 0;
   int mlc_queue_reserve_entry_count = 0;
 
-  INC_STAT_EVENT(0, MLC_QUEUE_OCCUPANCY, mem->l1_queue.entry_count);
+  INC_STAT_EVENT(0, MLC_QUEUE_OCCUPANCY, mem->mlc_queue.entry_count);
   /* Go thru the mlc_queue and try to access MLC for each request */
 
   for (ii = 0; ii < mem->mlc_queue.entry_count; ii++) {
