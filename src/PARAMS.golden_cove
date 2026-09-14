@@ -129,7 +129,7 @@
 --dcache_banks                  8
 --dcache_assoc		            12
 --dcache_line_size              64
---dcache_cycles                 5
+--dcache_cycles                 4
 
 ### Reorder/Retire Stage
 
