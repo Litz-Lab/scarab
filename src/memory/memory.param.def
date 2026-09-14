@@ -194,16 +194,20 @@ DEF_PARAM(mem_priority_wb_nodirty, MEM_PRIORITY_WB_NODIRTY, uns, uns, 0, )
 DEF_PARAM(promote_to_higher_priority_mem_req_type,
           PROMOTE_TO_HIGHER_PRIORITY_MEM_REQ_TYPE, Flag, Flag, FALSE, )
 
-// Request-buffer entries held in reserve so one class cannot starve another:
-// demand_reserve is withheld from prefetches, wb_reserve from everything except
-// writebacks. queue_wb_reserve applies the same rule per queue.
+// Request-buffer reserves: demand_reserve withheld from prefetches, wb_reserve from
+// everything but writebacks. Queues apply the same rule per level, below.
 DEF_PARAM(mem_req_buffer_demand_reserve, MEM_REQ_BUFFER_DEMAND_RESERVE, uns,
           uns, 0, )
 DEF_PARAM(mem_req_buffer_wb_reserve, MEM_REQ_BUFFER_WB_RESERVE, uns, uns, 2, )
 
 // Queue entries held in reserve for writebacks, as the mem_req_buffer_*_reserve
 // parameters do for the request buffer. Carved out of the configured size; 0 disables.
-DEF_PARAM(queue_wb_reserve, QUEUE_WB_RESERVE, uns, uns, 2, )
+/* Per-queue admission watermarks: a demand leaves wb_reserve free, a prefetch leaves
+   wb_reserve + prefetch_reserve. A refused prefetch is retried, never dropped. */
+DEF_PARAM(queue_mlc_wb_reserve, QUEUE_MLC_WB_RESERVE, uns, uns, 2, )
+DEF_PARAM(queue_mlc_prefetch_reserve, QUEUE_MLC_PREFETCH_RESERVE, uns, uns, 0, )
+DEF_PARAM(queue_l1_wb_reserve, QUEUE_L1_WB_RESERVE, uns, uns, 2, )
+DEF_PARAM(queue_l1_prefetch_reserve, QUEUE_L1_PREFETCH_RESERVE, uns, uns, 4, )
 
 // l1_queue size is the same as mem_req_buffer_entries
 // FOR independently sized queues beyond the l1
