@@ -237,16 +237,6 @@ DEF_PARAM(l1q_to_fsb_transfer_latency, L1Q_TO_FSB_TRANSFER_LATENCY, uns, uns,
 DEF_PARAM(prioritize_prefetches_with_unique, PRIORITIZE_PREFETCHES_WITH_UNIQUE,
           Flag, Flag, FALSE, )
 
-DEF_PARAM(kickout_prefetches, KICKOUT_PREFETCHES, Flag, Flag,
-          FALSE, ) /* do demand requests kickout prefs to free reqbufs? */
-DEF_PARAM(kickout_look_for_oldest_first, KICKOUT_LOOK_FOR_OLDEST_FIRST, Flag,
-          Flag, FALSE, ) /* do demand requests kickout prefs to free reqbufs? */
-DEF_PARAM(kickout_oldest_prefetch, KICKOUT_OLDEST_PREFETCH, Flag, Flag,
-          FALSE, ) /* do demand requests kickout prefs to free reqbufs? */
-DEF_PARAM(kickout_oldest_prefetch_within_bank,
-          KICKOUT_OLDEST_PREFETCH_WITHIN_BANK, Flag, Flag,
-          FALSE, ) /* do demand requests kickout prefs to free reqbufs? */
-
 DEF_PARAM(order_beyond_bus, ORDER_BEYOND_BUS, Flag, Flag,
           FALSE, ) /* order reqs by unique even after they're on the bus */
 DEF_PARAM(all_fifo_queues, ALL_FIFO_QUEUES, Flag, Flag,
