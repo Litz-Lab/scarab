@@ -332,8 +332,6 @@ DEF_PARAM(l1_shadow_tags_modulo, L1_SHADOW_TAGS_MODULO, uns, uns, 1, )
 // L1 partitioning done
 
 // Hierarchical MSHR behavior for MLC and L1 queues
-DEF_PARAM(hier_mshr_on, HIER_MSHR_ON, Flag, Flag, TRUE, )
-
 DEF_PARAM(perf_pred_enable, PERF_PRED_ENABLE, Flag, Flag, FALSE, )
 DEF_PARAM(perf_pred_mech, PERF_PRED_MECH, uns, Perf_Pred_Mech, PERF_PRED_CP, )
 DEF_PARAM(perf_pred_req_latency_mech, PERF_PRED_REQ_LATENCY_MECH, uns,

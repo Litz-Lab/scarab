@@ -131,7 +131,7 @@ struct Mem_Req_struct {
   Counter rdy_cycle;                   /* cycle when the current operation is complete */
   uns reserved_entry_count;            /* how many entries are reserved for this request */
   Flag merged_on_descent;              /* debug: another request was folded into this one */
-  uns8 reserved_levels;                /* HIER_MSHR_ON: levels holding a reservation, one bit each */
+  uns8 reserved_levels;                /* levels holding a reservation, one bit each */
   Counter first_stalling_cycle;        /* cycle this request became a type considered
                                           stalling */
   Counter oldest_op_unique_num;        /* unique num of the oldest op that is waiting
