@@ -103,6 +103,10 @@ typedef struct Mem_Queue_struct {
   int entry_count;
   int reserved_entry_count;
   uns size;
+  /* Outstanding misses this level is tracking. Separate from size: entries are
+     pipeline occupancy, MSHRs are fills in flight. */
+  uns mshr_size;
+  uns mshr_wb_reserve;
   char name[20];
   Mem_Queue_Type type;
 } Mem_Queue;
