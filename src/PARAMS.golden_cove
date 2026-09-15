@@ -154,14 +154,14 @@
 --mlc_present                   1
 --mlc_size                      2097000
 --mlc_assoc                     8
---mlc_cycles                    16
+--mlc_cycles                    20  # L2 load-use, AGEN to data
 
 
 ### LLC
 # 3 MiB per core, 16-way
 --l1_size                       3145728
 --l1_banks                      8
---l1_cycles		                36          // just a guess
+--l1_cycles		                57          # L3 load-use, AGEN to data (a guess)
 --l1_assoc                      16
 --l1_line_size                  64
 --l1_interleave_factor          64
@@ -200,7 +200,6 @@
 --pref_polpf_thresh=0.005
 --pref_update_interval=8192
 
---mem_req_buffer_demand_reserve 4
 --promote_to_higher_priority_mem_req_type 1
 
 ### Memory
