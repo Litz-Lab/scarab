@@ -93,7 +93,8 @@
 --dcache_read_ports             1
 --dcache_write_ports            1
 --dcache_banks                  8
---dcache_assoc		        4
+--dcache_assoc		        8
+--dcache_cycles                 3   # 4-cycle load-use = AGEN(1) + dcache(3)
 --dcache_line_size              64
 
 ### Reorder/Retire Stage
