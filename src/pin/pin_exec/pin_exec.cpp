@@ -32,9 +32,14 @@
 
 #include "pin.H"
 #ifdef ENABLE_PINPLAY
+#include <sys/syscall.h>
+
 #include "pinplay.H"
 #include "sde-init.H"
 #include "sde-pinplay-supp.H"
+#ifndef ARCH_SET_FS
+#define ARCH_SET_FS 0x1002  // linux: arch/x86/include/uapi/asm/prctl.h
+#endif
 #endif
 
 #undef UNUSED
@@ -109,6 +114,19 @@ INT32 Usage() {
   cerr << KNOB_BASE::StringKnobSummary() << endl;
   return -1;
 }
+
+#ifdef ENABLE_PINPLAY
+void sync_fs_base(THREADID tid, CONTEXT* ctxt, INT32, VOID*) {
+  ADDRINT fsb = 0;
+  PIN_GetContextRegval(ctxt, REG_SEG_FS_BASE, (UINT8*)&fsb);
+  // ARCH_SET_FS, 0x1002 (ref. arch/x86/include/uapi/asm/prctl.h)
+  if (syscall(SYS_arch_prctl, ARCH_SET_FS, fsb) != 0) {
+    *out << "ERROR: tid=" << tid << " arch_prctl(ARCH_SET_FS, 0x" << hex << fsb << dec << ") failed, errno=" << errno
+         << endl;
+    PIN_ExitProcess(1);
+  }
+}
+#endif
 
 void insert_logging(const INS& ins) {
   if(INS_Category(ins) == XED_CATEGORY_COND_BR) {
@@ -372,6 +390,10 @@ int main(int argc, char* argv[]) {
   PIN_AddFiniFunction(Fini, 0);
 
   scarab = new Client(KnobSocketPath, KnobCoreId);
+
+#ifdef ENABLE_PINPLAY
+  PIN_AddThreadStartFunction(sync_fs_base, 0);
+#endif
 
   // Start the program, never returns
   PIN_StartProgram();
