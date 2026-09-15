@@ -963,13 +963,6 @@ bool IssueQueues::has_ready_ops() const {
 
 // Memory is blocked when there are no more MSHRs in the L1 Q (i.e., there is no way to handle a D-Cache miss)
 void IssueQueues::update_mem_block() {
-  // if we are stalled due to lack of MSHRs to the L1, check to see if there is space now
-  if (node->mem_blocked && mem_can_allocate_req_buffer(node->proc_id, MRT_DFETCH, FALSE)) {
-    node->mem_blocked = FALSE;
-    STAT_EVENT(node->proc_id, MEM_BLOCK_LENGTH_0 + MIN2(node->mem_block_length, 5000) / 100);
-    node->mem_block_length = 0;
-  }
-
   INC_STAT_EVENT(node->proc_id, CORE_MEM_BLOCKED, node->mem_blocked);
   node->mem_block_length += node->mem_blocked;
 }

@@ -101,7 +101,7 @@ typedef struct Mem_Queue_Entry_struct {
 typedef struct Mem_Queue_struct {
   Mem_Queue_Entry* base;
   int entry_count;
-  int reserved_entry_count; /* for HIER_MSHR_ON */
+  int reserved_entry_count;
   uns size;
   char name[20];
   Mem_Queue_Type type;
@@ -142,7 +142,7 @@ typedef struct Memory_struct {
   List req_buffer_free_list;
   List* l1_in_buffer_core;
   uns total_mem_req_buffers;
-  uns req_buffers_per_core; /* admission budget; derived from the queues if HIER_MSHR_ON */
+  uns req_buffers_per_core; /* derived from the queues and what DRAM holds */
   uns* num_req_buffers_per_core;
 
   int req_count;
@@ -249,9 +249,8 @@ Flag l1_fill_line(Mem_Req* req);
 void mark_ops_as_l1_miss_satisfied(Mem_Req* req);
 int mem_get_req_count(uns proc_id);
 /* Per-core request-buffer budget. Equals MEM_REQ_BUFFER_ENTRIES unless
-   HIER_MSHR_ON, where it is derived from the per-level queue sizes. */
+   derived from the per-level queue sizes. */
 uns mem_get_req_buffer_size(void);
-Flag mem_can_allocate_req_buffer(uns proc_id, Mem_Req_Type type, Flag for_l1_writeback);
 
 void open_mem_stat_interval_file(void);
 void close_mem_stat_interval_file(void);
