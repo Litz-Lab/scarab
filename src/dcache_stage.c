@@ -577,8 +577,15 @@ static inline void dcache_miss_extra_access(Op* op, Cache* cache, Addr line_addr
 }
 
 static inline Flag dcache_miss_new_mem_req(Op* op, Addr line_addr, Mem_Req_Type mem_req_type) {
-  return new_mem_req((mem_req_type), dc->proc_id, line_addr, DCACHE_LINE_SIZE,
-                     DCACHE_CYCLES - 1 + op->uop->extra_ld_latency, op, dcache_fill_line, op->unique_num, 0);
+  Flag sent = new_mem_req((mem_req_type), dc->proc_id, line_addr, DCACHE_LINE_SIZE,
+                          DCACHE_CYCLES - 1 + op->uop->extra_ld_latency, op, dcache_fill_line, op->unique_num, 0);
+  Node_Stage* node = &cmp_model.node_stage[dc->proc_id];
+  if (sent && node->mem_blocked) {
+    node->mem_blocked = FALSE;
+    STAT_EVENT(dc->proc_id, MEM_BLOCK_LENGTH_0 + MIN2(node->mem_block_length, 5000) / 100);
+    node->mem_block_length = 0;
+  }
+  return sent;
 }
 
 static inline void dcache_cacheline_hit(Op* op, Addr line_addr, Dcache_Data* line) {
