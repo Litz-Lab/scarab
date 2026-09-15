@@ -99,10 +99,16 @@ typedef struct Mem_Queue_Entry_struct {
 } Mem_Queue_Entry;
 
 typedef struct Mem_Queue_struct {
-  Mem_Queue_Entry* base;
+  Mem_Queue_Entry* base; /* transport queues (fill, bus out) only */
   int entry_count;
-  int reserved_entry_count;
+  /* Lookup levels: requests this level is tracking, from the cycle it admits one
+     until the cycle that request is finished here -- it hit, or its fill came back.
+     Descending to the next level does not end it: the line still has to be filled. */
+  int mshrs_taken;
   uns size;
+  /* Lookup levels only: one FIFO of request ids per bank, in age order. */
+  List* banks;
+  uns num_banks;
   /* Outstanding misses this level is tracking. Separate from size: entries are
      pipeline occupancy, MSHRs are fills in flight. */
   uns mshr_size;
