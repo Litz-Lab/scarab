@@ -39,6 +39,7 @@
 #ifndef ARCH_SET_FS
 #define ARCH_SET_FS 0x1002  // linux: arch/x86/include/uapi/asm/prctl.h
 #endif
+#endif
 
 #undef UNUSED
 #undef WARNING
