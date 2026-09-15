@@ -32,8 +32,6 @@
 
 #include "pin.H"
 #ifdef ENABLE_PINPLAY
-#include <sys/syscall.h>
-
 #include "pinplay.H"
 #include "sde-init.H"
 #include "sde-pinplay-supp.H"
