@@ -166,7 +166,8 @@ static void mem_init_new_req(Mem_Req* new_req, Mem_Req_Type type, Mem_Queue_Type
                              uns size, uns delay, Op* op, Flag done_func(Mem_Req*), Counter unique_num,
                              Counter new_priority);
 
-static inline void init_mem_queue(Mem_Queue* queue, char* name, uns size, Mem_Queue_Type type);
+static inline void init_mem_queue(Mem_Queue* queue, char* name, uns size, Mem_Queue_Type type, uns mshr_size,
+                                  uns mshr_wb_reserve);
 
 static void print_mem_queue_generic(Mem_Queue* queue);
 
@@ -199,13 +200,19 @@ void set_memory(Memory* new_mem) {
 /**************************************************************************************/
 /* init_mem_queue: */
 
-static inline void init_mem_queue(Mem_Queue* queue, char* name, uns size, Mem_Queue_Type type) {
+static inline void init_mem_queue(Mem_Queue* queue, char* name, uns size, Mem_Queue_Type type, uns mshr_size,
+                                  uns mshr_wb_reserve) {
   ASSERTM(0, !(type & QUEUE_MEM), "Ramulator does not use QUEUE_MEM. QUEUE_MEM should not be initialized!\n");
+  /* mshr_size 0 = this queue tracks no misses (the fill and bus-out queues). */
+  ASSERTM(0, mshr_wb_reserve == 0 || mshr_size > mshr_wb_reserve, "%s: %u MSHRs do not cover a wb reserve of %u\n",
+          name, mshr_size, mshr_wb_reserve);
 
   queue->base = (Mem_Queue_Entry*)malloc(sizeof(Mem_Queue_Entry) * (size + 1));
   queue->size = size;
   queue->entry_count = 0;
   queue->reserved_entry_count = 0;
+  queue->mshr_size = mshr_size;
+  queue->mshr_wb_reserve = mshr_wb_reserve;
   queue->type = type;
   strcpy(queue->name, name);
 }
@@ -328,12 +335,12 @@ void init_memory() {
   }
 
   /* Initialize l1 and bus access queues which hold id's of request buffers */
-  init_mem_queue(&mem->mlc_queue, "MLC_QUEUE", mlc_queue_size, QUEUE_MLC);
-  init_mem_queue(&mem->mlc_fill_queue, "MLC_FILL_QUEUE", mem->total_mem_req_buffers, QUEUE_MLC_FILL);
-  init_mem_queue(&mem->l1_queue, "L1_QUEUE", l1_queue_size, QUEUE_L1);
+  init_mem_queue(&mem->mlc_queue, "MLC_QUEUE", mlc_queue_size, QUEUE_MLC, MLC_MSHRS, MSHR_WB_RESERVE);
+  init_mem_queue(&mem->mlc_fill_queue, "MLC_FILL_QUEUE", mem->total_mem_req_buffers, QUEUE_MLC_FILL, 0, 0);
+  init_mem_queue(&mem->l1_queue, "L1_QUEUE", l1_queue_size, QUEUE_L1, L1_MSHRS, MSHR_WB_RESERVE);
   init_mem_queue(&mem->bus_out_queue, "BUS_OUT_QUEUE",
-                 QUEUE_BUS_OUT_SIZE == 0 ? mem->total_mem_req_buffers : QUEUE_BUS_OUT_SIZE, QUEUE_BUS_OUT);
-  init_mem_queue(&mem->l1fill_queue, "L1FILL_QUEUE", mem->total_mem_req_buffers, QUEUE_L1FILL);
+                 QUEUE_BUS_OUT_SIZE == 0 ? mem->total_mem_req_buffers : QUEUE_BUS_OUT_SIZE, QUEUE_BUS_OUT, 0, 0);
+  init_mem_queue(&mem->l1fill_queue, "L1FILL_QUEUE", mem->total_mem_req_buffers, QUEUE_L1FILL, 0, 0);
 
   mem->core_fill_queues = (Mem_Queue*)calloc(NUM_CORES, sizeof(Mem_Queue));
   core_fill_seq_num = (Counter*)malloc(sizeof(Counter) * NUM_CORES);
@@ -341,7 +348,8 @@ void init_memory() {
     char buf[MAX_STR_LENGTH + 1];
     sprintf(buf, "CORE_%d_FILL_QUEUE", proc_id);
     init_mem_queue(&mem->core_fill_queues[proc_id], buf,
-                   QUEUE_CORE_FILL_SIZE == 0 ? mem->total_mem_req_buffers : QUEUE_CORE_FILL_SIZE, QUEUE_CORE_FILL);
+                   QUEUE_CORE_FILL_SIZE == 0 ? mem->total_mem_req_buffers : QUEUE_CORE_FILL_SIZE, QUEUE_CORE_FILL, 0,
+                   0);
     core_fill_seq_num[proc_id] = 1;
   }
 
@@ -603,7 +611,7 @@ static inline Flag mem_req_holds_mshr_at(Mem_Req* req, Mem_Queue* queue, uns8 le
   return (req->queue == queue) || (req->reserved_levels & level_bit);
 }
 
-/* The last QUEUE_WB_RESERVE entries are writeback-only: a fill evicting a dirty
+/* The last mshr_wb_reserve entries are writeback-only: a fill evicting a dirty
    line cannot complete until its writeback is admitted. */
 static inline Flag queue_full_for_req(Mem_Queue* queue, Mem_Req_Type type) {
   /* Signed: entry_count + reserved_entry_count can momentarily exceed size, and an
@@ -612,7 +620,7 @@ static inline Flag queue_full_for_req(Mem_Queue* queue, Mem_Req_Type type) {
 
   if (type == MRT_WB || type == MRT_WB_NODIRTY)
     return num_free <= 0;
-  return num_free <= (int)QUEUE_WB_RESERVE;
+  return num_free <= (int)queue->mshr_wb_reserve;
 }
 
 /**************************************************************************************/

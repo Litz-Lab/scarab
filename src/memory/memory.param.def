@@ -196,13 +196,17 @@ DEF_PARAM(promote_to_higher_priority_mem_req_type,
 
 // Request-buffer entries held in reserve so one class cannot starve another:
 // demand_reserve is withheld from prefetches, wb_reserve from everything except
-// writebacks. queue_wb_reserve applies the same rule per queue.
+// writebacks. mshr_wb_reserve applies the same rule per queue.
 DEF_PARAM(mem_req_buffer_demand_reserve, MEM_REQ_BUFFER_DEMAND_RESERVE, uns,
           uns, 0, )
 
-// Queue entries held in reserve for writebacks, as the mem_req_buffer_*_reserve
-// parameters do for the request buffer. Carved out of the configured size; 0 disables.
-DEF_PARAM(queue_wb_reserve, QUEUE_WB_RESERVE, uns, uns, 2, )
+/* Outstanding misses a level can track, independent of how many accesses its
+   pipeline holds. */
+DEF_PARAM(mlc_mshrs, MLC_MSHRS, uns, uns, 32, )
+DEF_PARAM(l1_mshrs, L1_MSHRS, uns, uns, 32, )
+/* Held for writebacks: they are low priority, so ordering never guarantees them
+   one, and refusing an LLC writeback can deadlock. */
+DEF_PARAM(mshr_wb_reserve, MSHR_WB_RESERVE, uns, uns, 2, )
 
 // l1_queue size is the same as mem_req_buffer_entries
 // FOR independently sized queues beyond the l1
