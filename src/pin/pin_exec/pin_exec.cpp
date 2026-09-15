@@ -32,10 +32,11 @@
 
 #include "pin.H"
 #ifdef ENABLE_PINPLAY
+#include <sys/syscall.h>
+
 #include "pinplay.H"
 #include "sde-init.H"
 #include "sde-pinplay-supp.H"
-#include <sys/syscall.h>
 #ifndef ARCH_SET_FS
 #define ARCH_SET_FS 0x1002  // linux: arch/x86/include/uapi/asm/prctl.h
 #endif
@@ -119,9 +120,9 @@ void sync_fs_base(THREADID tid, CONTEXT* ctxt, INT32, VOID*) {
   ADDRINT fsb = 0;
   PIN_GetContextRegval(ctxt, REG_SEG_FS_BASE, (UINT8*)&fsb);
   // ARCH_SET_FS, 0x1002 (ref. arch/x86/include/uapi/asm/prctl.h)
-  if(syscall(SYS_arch_prctl, ARCH_SET_FS, fsb) != 0) {
-    *out << "ERROR: tid=" << tid << " arch_prctl(ARCH_SET_FS, 0x" << hex << fsb
-         << dec << ") failed, errno=" << errno << endl;
+  if (syscall(SYS_arch_prctl, ARCH_SET_FS, fsb) != 0) {
+    *out << "ERROR: tid=" << tid << " arch_prctl(ARCH_SET_FS, 0x" << hex << fsb << dec << ") failed, errno=" << errno
+         << endl;
     PIN_ExitProcess(1);
   }
 }
