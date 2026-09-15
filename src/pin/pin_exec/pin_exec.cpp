@@ -35,6 +35,7 @@
 #include "pinplay.H"
 #include "sde-init.H"
 #include "sde-pinplay-supp.H"
+#include <sys/syscall.h>
 #endif
 
 #undef UNUSED
@@ -109,6 +110,15 @@ INT32 Usage() {
   cerr << KNOB_BASE::StringKnobSummary() << endl;
   return -1;
 }
+
+#ifdef ENABLE_PINPLAY
+void sync_fs_base(THREADID, CONTEXT* ctxt, INT32, VOID*) {
+  ADDRINT fsb = 0;
+  PIN_GetContextRegval(ctxt, REG_SEG_FS_BASE, (UINT8*)&fsb);
+  // ARCH_SET_FS, 0x1002 (ref. https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/arch/x86/include/uapi/asm/prctl.h)
+  syscall(SYS_arch_prctl, 0x1002, fsb);
+}
+#endif
 
 void insert_logging(const INS& ins) {
   if(INS_Category(ins) == XED_CATEGORY_COND_BR) {
@@ -372,6 +382,10 @@ int main(int argc, char* argv[]) {
   PIN_AddFiniFunction(Fini, 0);
 
   scarab = new Client(KnobSocketPath, KnobCoreId);
+
+#ifdef ENABLE_PINPLAY
+  PIN_AddThreadStartFunction(sync_fs_base, 0);
+#endif
 
   // Start the program, never returns
   PIN_StartProgram();
