@@ -132,11 +132,9 @@ static void mem_process_bus_out_reqs(void);
 
 static Flag mem_process_mlc_miss_access(Mem_Req* req, Mem_Queue_Entry* mlc_queue_entry, Addr* line_addr,
                                         MLC_Data* data);
-static Flag mem_complete_mlc_access(Mem_Req* req, Mem_Queue_Entry* mlc_queue_entry, int* l1_queue_insertion_count,
-                                    int* reserved_entry_count);
+static Flag mem_complete_mlc_access(Mem_Req* req, Mem_Queue_Entry* mlc_queue_entry, int* l1_queue_insertion_count);
 static Flag mem_process_l1_miss_access(Mem_Req* req, Mem_Queue_Entry* l1_queue_entry, Addr* line_addr, L1_Data* data);
-static Flag mem_complete_l1_access(Mem_Req* req, Mem_Queue_Entry* l1_queue_entry, int* bus_out_queue_insertion_count,
-                                   int* reserved_entry_count);
+static Flag mem_complete_l1_access(Mem_Req* req, Mem_Queue_Entry* l1_queue_entry, int* bus_out_queue_insertion_count);
 
 static inline Mem_Queue_Entry* mem_insert_req_into_queue(Mem_Req* new_req, Mem_Queue* queue, Counter priority);
 static inline Flag insert_new_req_into_l1_queue(uns proc_id, Mem_Req* new_req);
@@ -183,9 +181,8 @@ static Flag new_mem_l1_wb_req(Mem_Req_Type type, uns8 proc_id, Addr addr, uns si
 static inline void set_off_path_confirmed_status(Mem_Req* req);
 static L1_Data* l1_pref_cache_access(Mem_Req* req);
 
-static inline Flag queue_full_for_req(Mem_Queue* queue, Mem_Req_Type type);
 static inline void mem_record_late_prefetch(Mem_Req* pref);
-static inline int queue_num_free(Mem_Queue* queue);
+static inline int queue_mshr_free(Mem_Queue* queue);
 
 Flag is_final_state(Mem_Req_State state);
 Flag is_inv_state(Mem_Req_State state);
@@ -298,20 +295,16 @@ void init_memory() {
   init_mem_req_type_priorities();
 
   /* Initialize request buffers */
-  uns mlc_queue_size = QUEUE_MLC_SIZE ? QUEUE_MLC_SIZE : MEM_REQ_BUFFER_ENTRIES;
-  uns l1_queue_size = QUEUE_L1_SIZE ? QUEUE_L1_SIZE : MEM_REQ_BUFFER_ENTRIES;
-  /* With per-level MSHR files the request buffer is not a resource of its own: a
-     request holds an entry for as long as it holds an MSHR at any level, so the
-     buffer has to cover every level at once. Taking mem_req_buffer_entries
-     instead left the two levels' 64 MSHRs sharing 32 entries, which made the
-     buffer the bottleneck rather than the levels it is meant to track. */
-  /* A request keeps its entry after leaving its queue for DRAM, so cover both. */
-  mem->req_buffers_per_core = mlc_queue_size + l1_queue_size + RAMULATOR_READQ_ENTRIES + RAMULATOR_WRITEQ_ENTRIES;
+  /* Nothing is admitted on queue depth any more, so what bounds requests in flight
+     is the MSHR file at each level, what DRAM is holding, and the accesses still in
+     a lookup pipeline, which have not claimed an MSHR yet. */
+  mem->req_buffers_per_core = MLC_MSHRS + L1_MSHRS + RAMULATOR_READQ_ENTRIES + RAMULATOR_WRITEQ_ENTRIES +
+                              MLC_BANKS * MLC_CYCLES + L1_BANKS * L1_CYCLES;
   mem->total_mem_req_buffers = mem->req_buffers_per_core * (PRIVATE_MSHR_ON ? NUM_CORES : 1);
   /* Record it: the derived size is not a parameter, so PARAMS.out still shows
      mem_req_buffer_entries, which is no longer what the buffer is. */
-  fprintf(mystdout, "MEM_REQ_BUFFER: %u entries per core (mlc_queue %u + l1_queue %u)\n", mem->req_buffers_per_core,
-          mlc_queue_size, l1_queue_size);
+  fprintf(mystdout, "MEM_REQ_BUFFER: %u entries per core (mlc_mshrs %u + l1_mshrs %u)\n", mem->req_buffers_per_core,
+          MLC_MSHRS, L1_MSHRS);
   mem->req_buffer = (Mem_Req*)calloc(mem->total_mem_req_buffers, sizeof(Mem_Req));
   for (ii = 0; ii < mem->total_mem_req_buffers; ii++) {
     mem->req_buffer[ii].state = MRS_INV;
@@ -335,9 +328,9 @@ void init_memory() {
   }
 
   /* Initialize l1 and bus access queues which hold id's of request buffers */
-  init_mem_queue(&mem->mlc_queue, "MLC_QUEUE", mlc_queue_size, QUEUE_MLC, MLC_MSHRS, MSHR_WB_RESERVE);
+  init_mem_queue(&mem->mlc_queue, "MLC_QUEUE", mem->total_mem_req_buffers, QUEUE_MLC, MLC_MSHRS, MSHR_WB_RESERVE);
   init_mem_queue(&mem->mlc_fill_queue, "MLC_FILL_QUEUE", mem->total_mem_req_buffers, QUEUE_MLC_FILL, 0, 0);
-  init_mem_queue(&mem->l1_queue, "L1_QUEUE", l1_queue_size, QUEUE_L1, L1_MSHRS, MSHR_WB_RESERVE);
+  init_mem_queue(&mem->l1_queue, "L1_QUEUE", mem->total_mem_req_buffers, QUEUE_L1, L1_MSHRS, MSHR_WB_RESERVE);
   init_mem_queue(&mem->bus_out_queue, "BUS_OUT_QUEUE",
                  QUEUE_BUS_OUT_SIZE == 0 ? mem->total_mem_req_buffers : QUEUE_BUS_OUT_SIZE, QUEUE_BUS_OUT, 0, 0);
   init_mem_queue(&mem->l1fill_queue, "L1FILL_QUEUE", mem->total_mem_req_buffers, QUEUE_L1FILL, 0, 0);
@@ -611,23 +604,10 @@ static inline Flag mem_req_holds_mshr_at(Mem_Req* req, Mem_Queue* queue, uns8 le
   return (req->queue == queue) || (req->reserved_levels & level_bit);
 }
 
-/* The last mshr_wb_reserve entries are writeback-only: a fill evicting a dirty
+/* MSHRs left once the writeback-only reserve is set aside: a fill evicting a dirty
    line cannot complete until its writeback is admitted. */
-static inline Flag queue_full_for_req(Mem_Queue* queue, Mem_Req_Type type) {
-  /* Signed: entry_count + reserved_entry_count can momentarily exceed size, and an
-     unsigned difference wraps to a huge value that reads as plenty of room. */
-  int num_free = queue_num_free(queue);
-
-  if (type == MRT_WB || type == MRT_WB_NODIRTY)
-    return num_free <= 0;
-  return num_free <= (int)queue->mshr_wb_reserve;
-}
-
-/**************************************************************************************/
-/* queue_num_free: */
-
-static inline int queue_num_free(Mem_Queue* queue) {
-  return (int)queue->size - queue->reserved_entry_count - queue->entry_count;
+static inline int queue_mshr_free(Mem_Queue* queue) {
+  return (int)queue->mshr_size - queue->reserved_entry_count - (int)queue->mshr_wb_reserve;
 }
 
 /**************************************************************************************/
@@ -1296,33 +1276,7 @@ static Flag mem_process_l1_miss_access(Mem_Req* req, Mem_Queue_Entry* l1_queue_e
   req->l1_miss = TRUE;
   req->l1_miss_cycle = cycle_count;
 
-  if ((CONSTANT_MEMORY_LATENCY && !queue_full_for_req(&mem->l1fill_queue, req->type)) ||
-      //(!CONSTANT_MEMORY_LATENCY && !queue_full(&mem->bus_out_queue))) {
-      (!CONSTANT_MEMORY_LATENCY)) {
-    // Ramulator: moving the lines below to where ramulator_send() is called
-
-    //// cmp FIXME
-    // if (TRACK_L1_MISS_DEPS || MARK_L1_MISSES)
-    //    mark_ops_as_l1_miss(req);
-
-    // req->state = MRS_BUS_NEW; // FIXME?
-    // req->rdy_cycle = cycle_count + L1Q_TO_FSB_TRANSFER_LATENCY; /* this req
-    // will be ready to be sent to memory in the next cycle */
-
-    //// cmp FIXME
-    // if (STREAM_PREFETCH_ON)
-    //    stream_ul1_miss (req);
-
-    ///* Set the priority so that this entry will be removed from the l1_queue
-    ///*/
-    // l1_queue_entry->priority = Mem_Req_Priority_Offset[MRT_MIN_PRIORITY];
-
-    // STAT_EVENT(req->proc_id, SEND_MISS_REQ_QUEUE);
-    return TRUE;
-  } else {
-    // STAT_EVENT(req->proc_id, REJECTED_QUEUE_BUS_OUT);
-    return FALSE;
-  }
+  return TRUE;
 }
 
 /**************************************************************************************/
@@ -1409,26 +1363,27 @@ static Flag mem_process_mlc_miss_access(Mem_Req* req, Mem_Queue_Entry* mlc_queue
     }
   }
 
-  if (!queue_full_for_req(&mem->l1_queue, req->type)) {
-    req->state = MRS_L1_NEW;
-    /* this req will be ready to be sent to memory in the  next cycle */
-    req->rdy_cycle = cycle_count + MLCQ_TO_L1Q_TRANSFER_LATENCY;
-
-    /* Set the priority so that this entry will be removed from the mlc_queue */
-    mlc_queue_entry->priority = Mem_Req_Priority_Offset[MRT_MIN_PRIORITY];
-    return TRUE;
-  } else {
-    STAT_EVENT(req->proc_id, REJECTED_QUEUE_L1);
+  /* Descending is where this level claims its MSHR; without one the request stays in
+     the mlc_queue and retries. */
+  if (queue_mshr_free(&mem->mlc_queue) <= 0) {
+    STAT_EVENT(req->proc_id, REJECTED_QUEUE_MLC);
     return FALSE;
   }
+
+  req->state = MRS_L1_NEW;
+  /* this req will be ready to be sent to memory in the  next cycle */
+  req->rdy_cycle = cycle_count + MLCQ_TO_L1Q_TRANSFER_LATENCY;
+
+  /* Set the priority so that this entry will be removed from the mlc_queue */
+  mlc_queue_entry->priority = Mem_Req_Priority_Offset[MRT_MIN_PRIORITY];
+  return TRUE;
 }
 
 /**************************************************************************************/
 /* mem_complete_l1_access: */
 /* Returns TRUE if l1 access is complete and needs to be removed from l1_queue */
 
-static Flag mem_complete_l1_access(Mem_Req* req, Mem_Queue_Entry* l1_queue_entry, int* out_queue_insertion_count,
-                                   int* reserved_entry_count) {
+static Flag mem_complete_l1_access(Mem_Req* req, Mem_Queue_Entry* l1_queue_entry, int* out_queue_insertion_count) {
   Addr line_addr;
   L1_Data* data;
   int lru_position = -1;
@@ -1600,7 +1555,8 @@ static Flag mem_complete_l1_access(Mem_Req* req, Mem_Queue_Entry* l1_queue_entry
         }
 
         req->state = MRS_MEM_NEW;
-        l1_miss_access = ramulator_send(req);
+        Flag l1_mshr_ok = (req->type == MRT_WB) || (req->type == MRT_WB_NODIRTY) || queue_mshr_free(&mem->l1_queue) > 0;
+        l1_miss_access = l1_mshr_ok && ramulator_send(req);
         if (!l1_miss_access) {
           // STAT_EVENT(req->proc_id, REJECTED_QUEUE_BUS_OUT);
 
@@ -1654,7 +1610,8 @@ static Flag mem_complete_l1_access(Mem_Req* req, Mem_Queue_Entry* l1_queue_entry
            comes back next cycle, so reserving here would take a second entry for it
            every retry. Writebacks are never reserved, they do not come back. */
         if (l1_miss_access && (req->type != MRT_WB) && (req->type != MRT_WB_NODIRTY)) {
-          (*reserved_entry_count) += 1;
+          mem->l1_queue.reserved_entry_count += 1;
+          ASSERT(0, mem->l1_queue.reserved_entry_count <= (int)mem->l1_queue.mshr_size);
           req->reserved_entry_count += 1;
           req->reserved_levels |= MEM_RES_L1;
         }
@@ -1697,8 +1654,7 @@ static Flag mem_complete_l1_access(Mem_Req* req, Mem_Queue_Entry* l1_queue_entry
 /* mem_complete_mlc_access: */
 /* Returns TRUE if mlc access is complete and needs to be removed from mlc_queue */
 
-static Flag mem_complete_mlc_access(Mem_Req* req, Mem_Queue_Entry* mlc_queue_entry, int* l1_queue_insertion_count,
-                                    int* reserved_entry_count) {
+static Flag mem_complete_mlc_access(Mem_Req* req, Mem_Queue_Entry* mlc_queue_entry, int* l1_queue_insertion_count) {
   Addr line_addr;
   MLC_Data* data;
   int lru_position = -1;
@@ -1760,10 +1716,9 @@ static Flag mem_complete_mlc_access(Mem_Req* req, Mem_Queue_Entry* mlc_queue_ent
             descent_match->type != MRT_WB_NODIRTY) {
           ASSERT(req->proc_id, mem_req_holds_mshr_at(descent_match, &mem->l1_queue, MEM_RES_L1));
           /* Take the reservation this departure earns, so mem_merge_reqs can hand it
-             to the survivor or return it. Directly, not via reserved_entry_count:
-             that one is applied to the queue after the loop, and mem_merge_reqs
-             adjusts the queue now. */
+             to the survivor or return it. */
           mem->mlc_queue.reserved_entry_count += 1;
+          ASSERT(0, mem->mlc_queue.reserved_entry_count <= (int)mem->mlc_queue.mshr_size);
           req->reserved_entry_count += 1;
           req->reserved_levels |= MEM_RES_MLC;
           /* Same accounting the creation-time merge does: without this the descent
@@ -1783,7 +1738,8 @@ static Flag mem_complete_mlc_access(Mem_Req* req, Mem_Queue_Entry* mlc_queue_ent
       l1_seq_num++;
       (*l1_queue_insertion_count) += 1;
       if ((req->type != MRT_WB) && (req->type != MRT_WB_NODIRTY)) {
-        (*reserved_entry_count) += 1;
+        mem->mlc_queue.reserved_entry_count += 1;
+        ASSERT(0, mem->mlc_queue.reserved_entry_count <= (int)mem->mlc_queue.mshr_size);
         req->reserved_entry_count += 1;
         req->reserved_levels |= MEM_RES_MLC;
       }
@@ -1816,7 +1772,6 @@ static void mem_process_l1_reqs() {
   int reqbuf_id;
   int l1_queue_removal_count = 0;
   int out_queue_insertion_count = 0;
-  int l1_queue_reserve_entry_count = 0;
 
   INC_STAT_EVENT(0, L1_QUEUE_OCCUPANCY, mem->l1_queue.entry_count);
   /* Go thru the l1_queue and try to access L1 for each request */
@@ -1854,20 +1809,12 @@ static void mem_process_l1_reqs() {
               mem_req_state_names[req->state], Mem_Req_Type_str(req->type), mem->req_count, mem->l1_queue.entry_count,
               mem->bus_out_queue.entry_count, mem->l1fill_queue.entry_count);
 
-      if (mem_complete_l1_access(req, &(mem->l1_queue.base[ii]), &out_queue_insertion_count,
-                                 &l1_queue_reserve_entry_count))
+      if (mem_complete_l1_access(req, &(mem->l1_queue.base[ii]), &out_queue_insertion_count))
         l1_queue_removal_count++;
     }
   }
 
   ASSERT(req->proc_id, out_queue_insertion_count <= l1_queue_removal_count);
-  /* Reservations are taken for requests leaving the L1 queue toward memory, so the
-     bound is the number removed from the queue. It used to be compared against
-     out_queue_insertion_count, but that counter only tracked insertions into
-     bus_out_queue, which Ramulator replaced with ramulator_send() -- its increment
-     is commented out above, so it is permanently 0 and the check failed on the first
-     reservation. */
-  ASSERT(req->proc_id, l1_queue_reserve_entry_count <= l1_queue_removal_count);
 
   /* Remove requests from l1 access queue */
   if (l1_queue_removal_count > 0) {
@@ -1877,9 +1824,6 @@ static void mem_process_l1_reqs() {
     qsort(mem->l1_queue.base, mem->l1_queue.entry_count, sizeof(Mem_Queue_Entry), mem_compare_priority);
     mem->l1_queue.entry_count -= l1_queue_removal_count;
     ASSERT(req->proc_id, mem->l1_queue.entry_count >= 0);
-    /* Requests stay in the queues until filled (by reserving
-     * entries) */
-    mem->l1_queue.reserved_entry_count += l1_queue_reserve_entry_count;
   }
 
   /* Sort the out queue if requests were inserted */
@@ -1902,7 +1846,6 @@ static void mem_process_mlc_reqs() {
   int reqbuf_id;
   int mlc_queue_removal_count = 0;
   int l1_queue_insertion_count = 0;
-  int mlc_queue_reserve_entry_count = 0;
 
   INC_STAT_EVENT(0, MLC_QUEUE_OCCUPANCY, mem->mlc_queue.entry_count);
   /* Go thru the mlc_queue and try to access MLC for each request */
@@ -1940,14 +1883,12 @@ static void mem_process_mlc_reqs() {
       ASSERTM(req->proc_id, req->state == MRS_MLC_WAIT, "id:%d state:%s type:%s rc:%d mlc:%d l1:%d mf:%d\n", req->id,
               mem_req_state_names[req->state], Mem_Req_Type_str(req->type), mem->req_count, mem->mlc_queue.entry_count,
               mem->l1_queue.entry_count, mem->mlc_fill_queue.entry_count);
-      if (mem_complete_mlc_access(req, &(mem->mlc_queue.base[ii]), &l1_queue_insertion_count,
-                                  &mlc_queue_reserve_entry_count))
+      if (mem_complete_mlc_access(req, &(mem->mlc_queue.base[ii]), &l1_queue_insertion_count))
         mlc_queue_removal_count++;
     }
   }
 
   ASSERT(req->proc_id, l1_queue_insertion_count <= mlc_queue_removal_count);
-  ASSERT(req->proc_id, mlc_queue_reserve_entry_count <= l1_queue_insertion_count);
 
   /* Remove requests from mlc access queue */
   if ((mlc_queue_removal_count > 0)) {
@@ -1957,9 +1898,6 @@ static void mem_process_mlc_reqs() {
     qsort(mem->mlc_queue.base, mem->mlc_queue.entry_count, sizeof(Mem_Queue_Entry), mem_compare_priority);
     mem->mlc_queue.entry_count -= mlc_queue_removal_count;
     ASSERT(req->proc_id, mem->mlc_queue.entry_count >= 0);
-    /* Requests stay in the queues until filled (by reserving
-     * entries) */
-    mem->mlc_queue.reserved_entry_count += mlc_queue_reserve_entry_count;
   }
 
   /* Sort the l1 queue if requests were inserted */
@@ -3020,10 +2958,10 @@ static inline Mem_Queue_Entry* mem_insert_req_into_queue(Mem_Req* new_req, Mem_Q
           "Ramulator does not use QUEUE_MEM. A request should be issued using "
           "ramulator_send()!\n");
 
-  if (queue->entry_count >= (queue->size - queue->reserved_entry_count)) {
+  if (queue->entry_count >= (int)queue->size) {
     print_mem_queue(QUEUE_L1 | QUEUE_BUS_OUT | QUEUE_MEM | QUEUE_L1FILL | QUEUE_MLC | QUEUE_MLC_FILL);
   }
-  ASSERTM(new_req->proc_id, queue->entry_count < (queue->size - queue->reserved_entry_count),
+  ASSERTM(new_req->proc_id, queue->entry_count < (int)queue->size,
           "name:%s  count:%d  size:%d  reserved:%d  reqbuf:%d  rc:%d l1:%d "
           "bo:%d lf:%d rf:%d\n",
           queue->name, queue->entry_count, queue->size, queue->reserved_entry_count, new_req->id, mem->req_count,
@@ -3153,19 +3091,11 @@ Flag new_mem_req(Mem_Req_Type type, uns8 proc_id, Addr addr, uns size, uns delay
                                         ramulator_match));
   }
 
-  /* Step 2.5: Check if there is space in the appropriate queue */
-  if (to_mlc) {
-    if (queue_full_for_req(&mem->mlc_queue, type)) {
-      STAT_EVENT(proc_id, REJECTED_QUEUE_MLC);
-      return FALSE;
-    }
-  } else {
-    if (queue_full_for_req(&mem->l1_queue, type) ||
-        ((type == MRT_IPRF || type == MRT_DPRF) &&
-         queue_num_free(&mem->l1_queue) <= (int)MEM_REQ_BUFFER_DEMAND_RESERVE)) {
-      STAT_EVENT(proc_id, REJECTED_QUEUE_L1);
-      return FALSE;
-    }
+  /* Step 2.5: prefetches leave the LLC a margin of MSHRs for demands. */
+  if (!to_mlc && (type == MRT_IPRF || type == MRT_DPRF) &&
+      queue_mshr_free(&mem->l1_queue) <= (int)MEM_REQ_BUFFER_DEMAND_RESERVE) {
+    STAT_EVENT(proc_id, REJECTED_QUEUE_L1);
+    return FALSE;
   }
 
   /* Step 3: Not already in request buffer. Figure out if a free request buffer
@@ -3254,9 +3184,6 @@ Flag new_mem_req(Mem_Req_Type type, uns8 proc_id, Addr addr, uns size, uns delay
 
 static Flag insert_new_req_into_l1_queue(uns proc_id, Mem_Req* new_req) {
   if (!ROUND_ROBIN_TO_L1) {
-    if (queue_full_for_req(&mem->l1_queue, new_req->type)) {
-      ASSERT(proc_id, 0);
-    }
     mem_insert_req_into_queue(new_req, new_req->queue, ALL_FIFO_QUEUES ? l1_seq_num : 0);
     cycle_l1q_insert_count++;
     l1_seq_num++;
@@ -3273,9 +3200,6 @@ static Flag insert_new_req_into_l1_queue(uns proc_id, Mem_Req* new_req) {
 /* insert_new_req_into_mlc_queue: */
 
 static Flag insert_new_req_into_mlc_queue(uns proc_id, Mem_Req* new_req) {
-  if (queue_full_for_req(&mem->mlc_queue, new_req->type)) {
-    ASSERT(proc_id, 0);
-  }
   mem_insert_req_into_queue(new_req, new_req->queue, ALL_FIFO_QUEUES ? mlc_seq_num : 0);
   cycle_mlcq_insert_count++;
   mlc_seq_num++;
@@ -3322,19 +3246,6 @@ Flag new_mem_dc_wb_req(Mem_Req_Type type, uns8 proc_id, Addr addr, uns size, uns
     return (mem_adjust_matching_request(matching_req, type, addr, size, DEST_MLC, delay, op, done_func, unique_num,
                                         demand_hit_prefetch, demand_hit_writeback, &queue_entry, new_priority,
                                         ramulator_match));
-  }
-
-  /* Step 2.5: Check if there is space in the appropriate queue */
-  if (MLC_PRESENT) {
-    if (queue_full_for_req(&mem->mlc_queue, type)) {
-      STAT_EVENT(proc_id, REJECTED_QUEUE_MLC);
-      return FALSE;
-    }
-  } else {
-    if (queue_full_for_req(&mem->l1_queue, type)) {
-      STAT_EVENT(proc_id, REJECTED_QUEUE_L1);
-      return FALSE;
-    }
   }
 
   /* Step 3: Not already in request buffer. Figure out if a free request buffer
@@ -3395,12 +3306,6 @@ static Flag new_mem_mlc_wb_req(Mem_Req_Type type, uns8 proc_id, Addr addr, uns s
     return (mem_adjust_matching_request(matching_req, type, addr, size, DEST_L1, delay, op, done_func, unique_num,
                                         demand_hit_prefetch, demand_hit_writeback, &queue_entry, new_priority,
                                         ramulator_match));
-  }
-
-  /* Step 2.5: Check if there is space in the L1 queue */
-  if (queue_full_for_req(&mem->l1_queue, type)) {
-    STAT_EVENT(proc_id, REJECTED_QUEUE_L1);
-    return FALSE;
   }
 
   /* Step 3: Not already in request buffer. Figure out if a free request buffer exists */
