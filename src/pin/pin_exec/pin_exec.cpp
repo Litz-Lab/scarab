@@ -32,10 +32,11 @@
 
 #include "pin.H"
 #ifdef ENABLE_PINPLAY
+#include <sys/syscall.h>
+
 #include "pinplay.H"
 #include "sde-init.H"
 #include "sde-pinplay-supp.H"
-#include <sys/syscall.h>
 #endif
 
 #undef UNUSED
@@ -115,7 +116,8 @@ INT32 Usage() {
 void sync_fs_base(THREADID, CONTEXT* ctxt, INT32, VOID*) {
   ADDRINT fsb = 0;
   PIN_GetContextRegval(ctxt, REG_SEG_FS_BASE, (UINT8*)&fsb);
-  // ARCH_SET_FS, 0x1002 (ref. https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/arch/x86/include/uapi/asm/prctl.h)
+  // ARCH_SET_FS, 0x1002 (ref.
+  // https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/arch/x86/include/uapi/asm/prctl.h)
   syscall(SYS_arch_prctl, 0x1002, fsb);
 }
 #endif
