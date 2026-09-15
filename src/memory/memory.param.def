@@ -246,10 +246,6 @@ DEF_PARAM(order_beyond_bus, ORDER_BEYOND_BUS, Flag, Flag,
 DEF_PARAM(all_fifo_queues, ALL_FIFO_QUEUES, Flag, Flag,
           FALSE, ) /* do all queues behave as FIFO? */
 
-DEF_PARAM(queue_mlc_size, QUEUE_MLC_SIZE, uns, uns,
-          0, ) /* 0 = HPS_MEM_REQ_BUFFER_ENTRIES */
-DEF_PARAM(queue_l1_size, QUEUE_L1_SIZE, uns, uns,
-          0, ) /* 0 = HPS_MEM_REQ_BUFFER_ENTRIES */
 DEF_PARAM(queue_bus_out_size, QUEUE_BUS_OUT_SIZE, uns, uns,
           0, ) /* 0 = HPS_MEM_REQ_BUFFER_ENTRIES */
 DEF_PARAM(queue_core_fill_size, QUEUE_CORE_FILL_SIZE, uns, uns,
