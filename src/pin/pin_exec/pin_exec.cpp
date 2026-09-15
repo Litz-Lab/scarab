@@ -37,6 +37,9 @@
 #include "pinplay.H"
 #include "sde-init.H"
 #include "sde-pinplay-supp.H"
+#include <sys/syscall.h>
+#ifndef ARCH_SET_FS
+#define ARCH_SET_FS 0x1002  // linux: arch/x86/include/uapi/asm/prctl.h
 #endif
 
 #undef UNUSED
@@ -113,12 +116,15 @@ INT32 Usage() {
 }
 
 #ifdef ENABLE_PINPLAY
-void sync_fs_base(THREADID, CONTEXT* ctxt, INT32, VOID*) {
+void sync_fs_base(THREADID tid, CONTEXT* ctxt, INT32, VOID*) {
   ADDRINT fsb = 0;
   PIN_GetContextRegval(ctxt, REG_SEG_FS_BASE, (UINT8*)&fsb);
-  // ARCH_SET_FS, 0x1002 (ref.
-  // https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/arch/x86/include/uapi/asm/prctl.h)
-  syscall(SYS_arch_prctl, 0x1002, fsb);
+  // ARCH_SET_FS, 0x1002 (ref. arch/x86/include/uapi/asm/prctl.h)
+  if(syscall(SYS_arch_prctl, ARCH_SET_FS, fsb) != 0) {
+    *out << "ERROR: tid=" << tid << " arch_prctl(ARCH_SET_FS, 0x" << hex << fsb
+         << dec << ") failed, errno=" << errno << endl;
+    PIN_ExitProcess(1);
+  }
 }
 #endif
 
