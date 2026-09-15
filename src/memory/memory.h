@@ -98,11 +98,25 @@ typedef struct Mem_Queue_Entry_struct {
   Counter rdy_cycle;
 } Mem_Queue_Entry;
 
+/* One bank's list, threaded through Mem_Req::bank_next. -1 is the empty list, so
+   nothing here needs sizing: the request pool already bounds it. */
+typedef struct Bank_Fifo_struct {
+  int head;
+  int tail;
+  int count;
+} Bank_Fifo;
+
 typedef struct Mem_Queue_struct {
-  Mem_Queue_Entry* base;
+  Mem_Queue_Entry* base; /* transport queues (fill, bus out) only */
   int entry_count;
   int reserved_entry_count;
   uns size;
+  /* Lookup levels only. A bank starts one lookup per cycle, demands before
+     prefetches; a started request moves to inflight so the bank stays pipelined. */
+  Bank_Fifo* wait_demand;
+  Bank_Fifo* wait_pref;
+  Bank_Fifo* inflight;
+  uns num_banks;
   /* Outstanding misses this level is tracking. Separate from size: entries are
      pipeline occupancy, MSHRs are fills in flight. */
   uns mshr_size;

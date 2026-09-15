@@ -105,6 +105,7 @@ DECLARE_ENUM(Dram_Req_Status, DRAM_REQ_STATUS_LIST, DRAM_REQ_ROW_);
 struct Mem_Req_struct {
   uns proc_id;             /* processor id that generates the request */
   int id;                  /* request buffer num */
+  int bank_next;           /* next request in this bank's list, -1 at the tail */
   Flag off_path;           /* is the mem_req entirely off path? */
   Flag off_path_confirmed; /* does the processor know that this is off-path -
                               set after the branch resolves */
