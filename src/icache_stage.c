@@ -1391,12 +1391,11 @@ void log_stats_mshr_hit(Addr line_addr) {
   Flag ramulator_match = FALSE;
   Mem_Req* req = mem_search_reqbuf_wrapper(
       ic->proc_id, line_addr, MRT_FDIPPRFON, ICACHE_LINE_SIZE, &demand_hit_prefetch, &demand_hit_writeback,
-      QUEUE_MLC | QUEUE_L1 | QUEUE_BUS_OUT | QUEUE_MEM | QUEUE_L1FILL | QUEUE_MLC_FILL, &queue_entry, &ramulator_match);
+      QUEUE_MLC | QUEUE_L1 | QUEUE_MEM | QUEUE_L1FILL | QUEUE_MLC_FILL, &queue_entry, &ramulator_match);
   if (!req) {
-    req = mem_search_reqbuf_wrapper(ic->proc_id, line_addr, MRT_FDIPPRFOFF, ICACHE_LINE_SIZE, &demand_hit_prefetch,
-                                    &demand_hit_writeback,
-                                    QUEUE_MLC | QUEUE_L1 | QUEUE_BUS_OUT | QUEUE_MEM | QUEUE_L1FILL | QUEUE_MLC_FILL,
-                                    &queue_entry, &ramulator_match);
+    req = mem_search_reqbuf_wrapper(
+        ic->proc_id, line_addr, MRT_FDIPPRFOFF, ICACHE_LINE_SIZE, &demand_hit_prefetch, &demand_hit_writeback,
+        QUEUE_MLC | QUEUE_L1 | QUEUE_MEM | QUEUE_L1FILL | QUEUE_MLC_FILL, &queue_entry, &ramulator_match);
   }
 
   if (req && !req->cyc_hit_by_demand_load) {

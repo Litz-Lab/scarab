@@ -84,7 +84,6 @@ typedef enum Mem_Queue_Req_Result_enum {
 
 typedef enum Mem_Queue_Type_enum {
   QUEUE_L1 = 1 << 0,
-  QUEUE_BUS_OUT = 1 << 1,
   QUEUE_MEM = 1 << 2,
   QUEUE_L1FILL = 1 << 3,
   QUEUE_MLC = 1 << 4,
@@ -101,9 +100,8 @@ typedef struct Mem_Queue_Entry_struct {
 typedef struct Mem_Queue_struct {
   Mem_Queue_Entry* base; /* transport queues (fill, bus out) only */
   int entry_count;
-  /* Lookup levels: requests this level is tracking, from the cycle it admits one
-     until the cycle that request is finished here -- it hit, or its fill came back.
-     Descending to the next level does not end it: the line still has to be filled. */
+  /* Lookup levels: how many misses this level is tracking. A request takes one when
+     it misses here and gives it back when its fill lands. */
   int mshrs_taken;
   uns size;
   /* Lookup levels only: one FIFO of request ids per bank, in age order. */
@@ -165,11 +163,13 @@ typedef struct Memory_struct {
 
   /* various queues (arrays) */
   Mem_Queue mlc_queue;
-  Mem_Queue mlc_fill_queue;
   Mem_Queue l1_queue;
-  Mem_Queue bus_out_queue;
-  Mem_Queue l1fill_queue;
   Mem_Queue* core_fill_queues;
+  /* Fills that could not finish on the cycle their data arrived -- a dirty eviction
+     whose writeback was refused, or a done_func that could not take a port. Walked
+     each cycle to retry. Everything else completes inside the DRAM callback and
+     never appears here, so this is short where the MSHR files are not. */
+  List completed_reqs;
 
   Counter last_mem_queue_cycle;
 
@@ -184,11 +184,6 @@ typedef struct Memory_struct {
   Cache* umon_cache_core;
   double** umon_cache_hit_count_core;
 
-  uns* bus_out_queue_entry_count_core;
-  int* bus_out_queue_index_core;         // bus_out_queue to mem_queue scheduling
-  Flag* bus_out_queue_seen_oldest_core;  // FIFO for bus_out_queue
-  uns8 bus_out_queue_round_robin_next_proc_id;
-  uns bus_out_queue_one_core_first_num_sent;
 } Memory;
 
 typedef struct Pref_LoadPCInfo_Struct {

@@ -205,18 +205,10 @@ DEF_PARAM(mshr_wb_reserve, MSHR_WB_RESERVE, uns, uns, 2, )
 // l1_queue size is the same as mem_req_buffer_entries
 // FOR independently sized queues beyond the l1
 DEF_PARAM(mem_l1_fill_queue_entries, MEM_L1_FILL_QUEUE_ENTRIES, uns, uns, 32, )
-// Ramulator_remove: Ramulator manages the request queues itself. Implemented
-// an equivalent of MEM_MEM_QUEUE_ENTRIES in ramulator.param.def
-// DEF_PARAM(  mem_mem_queue_entries             , MEM_MEM_QUEUE_ENTRIES
-// , uns    , uns      , 32                     ,       )
-DEF_PARAM(mem_bus_out_queue_partition_enable,
-          MEM_BUS_OUT_QUEUE_PARTITION_ENABLE, Flag, Flag, FALSE, )
 DEF_PARAM(mem_mem_queue_partition_enable, MEM_MEM_QUEUE_PARTITION_ENABLE, Flag,
           Flag, FALSE, )
-DEF_PARAM(mem_bus_out_queue_as_fifo, MEM_BUS_OUT_QUEUE_AS_FIFO, Flag, Flag,
-          TRUE, )
 
-// Scheduling from bus_out_queue to mem_queue
+// Scheduling into the Ramulator queue
 // oldest_first_to_mem_queue is base on global oldest first (original scarab)
 DEF_PARAM(oldest_first_to_mem_queue, OLDEST_FIRST_TO_MEM_QUEUE, Flag, Flag,
           TRUE, )
@@ -242,8 +234,6 @@ DEF_PARAM(order_beyond_bus, ORDER_BEYOND_BUS, Flag, Flag,
 DEF_PARAM(all_fifo_queues, ALL_FIFO_QUEUES, Flag, Flag,
           FALSE, ) /* do all queues behave as FIFO? */
 
-DEF_PARAM(queue_bus_out_size, QUEUE_BUS_OUT_SIZE, uns, uns,
-          0, ) /* 0 = HPS_MEM_REQ_BUFFER_ENTRIES */
 DEF_PARAM(queue_core_fill_size, QUEUE_CORE_FILL_SIZE, uns, uns,
           0, ) /* 0 = HPS_MEM_REQ_BUFFER_ENTRIES */
 
