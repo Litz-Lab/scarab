@@ -311,6 +311,7 @@ int main(int argc, char* argv[]) {
   PIN_InitSymbols();
   sde_pin_init(argc, argv);
   sde_init();
+  scarab_pinplay_engine = sde_tracing_get_pinplay_engine();
 #else
   if(PIN_Init(argc, argv)) {
     return Usage();

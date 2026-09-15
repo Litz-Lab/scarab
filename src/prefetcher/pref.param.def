@@ -89,7 +89,6 @@ DEF_PARAM( pref_ul1req_queue_overwrite_on_full , PREF_UL1REQ_QUEUE_OVERWRITE_ON_
 DEF_PARAM( pref_dl0schedule_num                , PREF_DL0SCHEDULE_NUM                , uns             , uns                , 4         ,    )
 DEF_PARAM( pref_umlc_schedule_num              , PREF_UMLC_SCHEDULE_NUM              , uns             , uns                , 4         ,    )
 DEF_PARAM( pref_ul1schedule_num                , PREF_UL1SCHEDULE_NUM                , uns             , uns                , 4         ,    )
-DEF_PARAM( pref_l1q_demand_reserve             , PREF_L1Q_DEMAND_RESERVE             , uns             , uns                , 0         ,    ) 
 
 DEF_PARAM( pref_report_pref_match_as_miss      , PREF_REPORT_PREF_MATCH_AS_MISS      , Flag            , Flag               , FALSE     ,    )
 DEF_PARAM( pref_report_pref_match_as_hit       , PREF_REPORT_PREF_MATCH_AS_HIT       , Flag            , Flag               , TRUE      ,    )
@@ -100,7 +99,6 @@ DEF_PARAM( pref_oracle_train_on                , PREF_ORACLE_TRAIN_ON           
 
      // Throttling Stuff
 // Prefetcher drops a request when memory req buffer is full
-DEF_PARAM(pref_req_drop                        , PREF_REQ_DROP                       , Flag            , Flag               , FALSE     ,    )    
 DEF_PARAM( pref_throttle_on                    , PREF_THROTTLE_ON                    , Flag            , Flag               , FALSE     ,    )
 DEF_PARAM( pref_throttlefb_on                  , PREF_THROTTLEFB_ON                  , Flag            , Flag               , FALSE     ,    )
 

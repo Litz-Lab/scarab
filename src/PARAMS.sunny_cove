@@ -150,6 +150,15 @@
 --l1_line_size                  64
 --l1_interleave_factor          64
 
+### Cache hierarchy policy
+# Non-inclusive LLC, modelled as exclusive: a fill inserts only at the level the
+# request targets and a victim moves down instead of being duplicated. Intel
+# states no inclusion property from Skylake-SP onward because guaranteeing one
+# would mean probing every core's L1 and L2 on each LLC insertion; the intent is
+# a victim-filled LLC, which is what this models. The residue that cannot be
+# guaranteed away is counted as EXCL_FILL_DUP_L0_LLC (4.4% of LLC prefetch fills).
+--exclusive_caches              1
+
 
 ### prefetcher
 # Kept same as Kaby Lake
@@ -175,7 +184,7 @@
 --pref_polpf_thresh=0.005
 --pref_update_interval=8192
 
---mem_req_buffer_pref_watermark 4
+--mem_req_buffer_demand_reserve 4
 --promote_to_higher_priority_mem_req_type 1
 
 ### Memory

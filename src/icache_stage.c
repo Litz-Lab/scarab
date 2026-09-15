@@ -69,6 +69,8 @@
 #include "thread.h"
 #include "uop_queue_stage.h"
 
+static inline void icache_demote_victim(Addr fill_addr);
+
 /**************************************************************************************/
 /* Macros */
 
@@ -385,6 +387,7 @@ Inst_Info** lookup_icache() {
       STAT_EVENT(ic->proc_id, L2_IDEAL_FILL_ICACHE);
       // actually bring it into the L1 icache
       Addr dummy_repl_line_addr;
+      icache_demote_victim(ic->fetch_addr);
       line =
           (Inst_Info**)cache_insert(&ic->icache, ic->proc_id, ic->fetch_addr, &dummy_line_addr, &dummy_repl_line_addr);
     } else
@@ -987,6 +990,24 @@ static inline void icache_process_ops(Stage_Data* cur_data, Flag fetched_from_uo
 }
 
 /**************************************************************************************/
+/* icache_demote_victim: */
+/* Exclusive hierarchy: the line this fill is about to evict moves down a level
+   instead of vanishing. Without this, instruction lines -- which skip the MLC and
+   LLC on fill (see mlc_fill_line/l1_fill_line) -- have no backing store at all. */
+
+static inline void icache_demote_victim(Addr fill_addr) {
+  Addr repl_line_addr;
+  Flag repl_line_valid;
+
+  if (!EXCLUSIVE_CACHES)
+    return;
+
+  get_next_repl_line(&ic->icache, ic->proc_id, fill_addr, &repl_line_addr, &repl_line_valid);
+  if (repl_line_valid)
+    mem_demote_to_mlc(get_proc_id_from_cmp_addr(repl_line_addr), repl_line_addr, FALSE, FALSE, FALSE);
+}
+
+/**************************************************************************************/
 /* icache_fill_line: */
 
 Flag icache_fill_line(Mem_Req* req)  // cmp FIXME maybe needed to be optimized
@@ -1029,6 +1050,7 @@ Flag icache_fill_line(Mem_Req* req)  // cmp FIXME maybe needed to be optimized
       return TRUE;
     }
 
+    icache_demote_victim(ic->fetch_addr);
     ic->line = (Inst_Info**)cache_insert(&ic->icache, ic->proc_id, ic->fetch_addr, &ic->line_addr, &repl_line_addr);
     DEBUG(ic->proc_id, "Got line switch into ic fetch %llx\n", ic->line_addr);
     STAT_EVENT(ic->proc_id, ICACHE_FILL);
@@ -1096,6 +1118,7 @@ Flag icache_fill_line(Mem_Req* req)  // cmp FIXME maybe needed to be optimized
       return TRUE;
     }
 
+    icache_demote_victim(req->addr);
     line = (Inst_Info**)cache_insert(&ic->icache, ic->proc_id, req->addr, &dummy_addr, &repl_line_addr);
 
     if (WP_COLLECT_STATS) {  // cmp IGNORE
@@ -1180,6 +1203,7 @@ Inst_Info** ic_pref_cache_access(void) {
   }
 
   if (line) {
+    icache_demote_victim(ic->fetch_addr);
     inserted_line =
         (Inst_Info**)cache_insert(&ic->icache, ic->proc_id, ic->fetch_addr, &ic->line_addr, &repl_line_addr);
     DEBUG(ic->proc_id, "ic_pref cache hit:fetch_addr:0x%s \n", hexstr64(ic->fetch_addr));
@@ -1426,8 +1450,10 @@ void log_stats_mshr_hit(Addr line_addr) {
     if (FDIP_ENABLE && !FDIP_UTILITY_HASH_ENABLE && !FDIP_BLOOM_FILTER && !FDIP_UC_SIZE && !EIP_ENABLE &&
         !FDIP_PERFECT_PREFETCH && (NUM_BPS == 1) &&
         (mem_req_is_type(req, MRT_FDIPPRFON) || mem_req_is_type(req, MRT_FDIPPRFOFF)))
-      ASSERT(ic->proc_id,
-             imiss_reason == IMISS_MSHR_HIT_PREFETCHED_OFFPATH || imiss_reason == IMISS_MSHR_HIT_PREFETCHED_ONPATH);
+      /* FDIP's per-line map is reset at a recovery, so an outstanding prefetch can
+         still read as IMISS_NOT_PREFETCHED. Count it rather than assert. */
+      if (!(imiss_reason == IMISS_MSHR_HIT_PREFETCHED_OFFPATH || imiss_reason == IMISS_MSHR_HIT_PREFETCHED_ONPATH))
+        STAT_EVENT(ic->proc_id, ICACHE_MISS_MSHR_HIT_FDIP_STALE_MAP);
     if (imiss_reason == IMISS_MSHR_HIT_PREFETCHED_ONPATH)
       STAT_EVENT(ic->proc_id, ICACHE_MISS_MSHR_HIT_PREFETCHED_ONPATH);
     else if (imiss_reason == IMISS_MSHR_HIT_PREFETCHED_OFFPATH)

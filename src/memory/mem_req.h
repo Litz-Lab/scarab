@@ -85,6 +85,9 @@ DECLARE_ENUM(Mem_Req_Type, MRT_LIST, MRT_);
    - This is currently used if a demand matches a prefetch.
    - But it can be generalized if done_func is done with...
 */
+#define MEM_RES_MLC (1 << 0) /* holds an entry in mem->mlc_queue */
+#define MEM_RES_L1 (1 << 1)  /* holds an entry in mem->l1_queue */
+
 typedef enum Destination_enum {
   DEST_NONE = 0,
   DEST_DCACHE = 1 << 0,
@@ -127,6 +130,8 @@ struct Mem_Req_struct {
   Counter start_cycle;                 /* cycle that the request is ready to process */
   Counter rdy_cycle;                   /* cycle when the current operation is complete */
   uns reserved_entry_count;            /* how many entries are reserved for this request */
+  Flag merged_on_descent;              /* debug: another request was folded into this one */
+  uns8 reserved_levels;                /* levels holding a reservation, one bit each */
   Counter first_stalling_cycle;        /* cycle this request became a type considered
                                           stalling */
   Counter oldest_op_unique_num;        /* unique num of the oldest op that is waiting

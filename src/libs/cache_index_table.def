@@ -1,0 +1,13 @@
+Index_Hash index_hash_table [] = {
+    /* Enum              Name                  hash_func                  */
+    /* ------------------------------------------------------------------ */
+    { ID_HASH,           "identity",           cache_index_id_hash        },
+    { KNUTH_HASH,        "knuth",              cache_index_knuth_hash     },
+    { SINGLE_XOR,        "single_xor",         cache_index_single_xor     },
+    { XOR_FOLDING,       "xor_folding",        cache_index_xor_folding    },
+    { PRIME_DISPLACE,    "prime_displace",     cache_index_prime_displace },
+    { SHA256_HASH,       "sha256",             cache_index_sha256         },
+    { ENTROPY_INDEX,     "entropy",            cache_index_entropy        },
+    { CSV_MAP,           "csv",                cache_index_csv            },
+    { NUM_INDEX_HASH,    0,                    NULL }
+};

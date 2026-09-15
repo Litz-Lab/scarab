@@ -29,6 +29,8 @@ jobs:
     with:
       sci_id: top_simpoint_dbg
       collect_metrics: true
+      # The merge commit, which exists in this repo even for fork PRs.
+      scarab_ref: ${{ github.sha }}
 
   build-and-run-scarab-opt:
     if: github.event_name == 'pull_request' || github.repository == 'litz-lab/scarab'
@@ -37,6 +39,7 @@ jobs:
       sci_id: top_simpoint
       collect_metrics: true
       run_lint: true
+      scarab_ref: ${{ github.sha }}
 
   compare-ipc:
     ########################################################

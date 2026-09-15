@@ -71,9 +71,7 @@ DEF_STAT(PREF_DC_HIT_NOSEND                , COUNT   ,     NO_RATIO)
 
 DEF_STAT(PREF_WBQDC_HIT_NOSEND             , COUNT   ,     NO_RATIO)
 
-DEF_STAT(PREF_MLCQ_STALL                   , COUNT   ,     NO_RATIO)
 
-DEF_STAT(PREF_L1Q_STALL                    , COUNT   ,     NO_RATIO)
 
 DEF_STAT(PREF_UMLC_REQ_SEND_QUEUE_STALL    , COUNT   ,     NO_RATIO)
 
@@ -143,7 +141,6 @@ DEF_STAT( PREF_DISTANCE_8                  , COUNT   ,     NO_RATIO)
 DEF_STAT( PREF_DISTANCE_9                  , COUNT   ,     NO_RATIO)
 DEF_STAT( PREF_DISTANCE_10                 , DIST   ,     NO_RATIO)
 
-
 DEF_STAT( PREF_REPL_MRU                    , DIST    ,     NO_RATIO)
 DEF_STAT( PREF_REPL_MID                    , COUNT   ,     NO_RATIO)
 DEF_STAT( PREF_REPL_LOWQTR                 , COUNT   ,     NO_RATIO)
@@ -152,17 +149,6 @@ DEF_STAT( PREF_REPL_LRU                    , DIST   ,     NO_RATIO)
 DEF_STAT( PREF_REPL_MOVEDOWN               , DIST   ,     NO_RATIO)
 DEF_STAT( PREF_REPL_MOVEUP                 , DIST   ,     NO_RATIO)
 
-DEF_STAT( PREF_COV_1                       , DIST    ,     NO_RATIO)
-DEF_STAT( PREF_COV_2                       , COUNT    ,     NO_RATIO)
-DEF_STAT( PREF_COV_3                       , COUNT    ,     NO_RATIO)
-DEF_STAT( PREF_COV_4                       , COUNT    ,     NO_RATIO)
-DEF_STAT( PREF_COV_5                       , COUNT    ,     NO_RATIO)
-
-DEF_STAT( PREF_COV_6                       , COUNT    ,     NO_RATIO)
-DEF_STAT( PREF_COV_7                       , COUNT    ,     NO_RATIO)
-DEF_STAT( PREF_COV_8                       , COUNT    ,     NO_RATIO)
-DEF_STAT( PREF_COV_9                       , COUNT    ,     NO_RATIO)
-DEF_STAT( PREF_COV_10                      , DIST    ,     NO_RATIO)
      // -stat  PREF_POL_1  PREF_POL_2  PREF_POL_3  PREF_POL_4  PREF_POL_5  PREF_POL_6  PREF_POL_7  PREF_POL_8  PREF_POL_9  PREF_POL_10
 DEF_STAT( PREF_POL_1                       , DIST    ,     NO_RATIO)
 DEF_STAT( PREF_POL_2                       , COUNT    ,     NO_RATIO)
@@ -250,7 +236,6 @@ DEF_STAT(FDIP_PREF_MSHR_PROBE_HIT_OFFPATH0, COUNT, NO_RATIO)
 DEF_STAT(FDIP_PREF_FAILED_ONPATH0, COUNT, NO_RATIO)
 /* Split of FDIP_PREF_FAILED_*: new_mem_req() refuses either because no request
    buffer entry was available, or because the target queue was full. */
-DEF_STAT(FDIP_PREF_FAILED_REQ_BUF_FULL, COUNT, NO_RATIO)
 DEF_STAT(FDIP_PREF_FAILED_QUEUE_FULL, COUNT, NO_RATIO)
 DEF_STAT(FDIP_PREF_FAILED_OFFPATH0, COUNT, NO_RATIO)
 DEF_STAT(FDIP_ATTEMPTED_PREF_ONPATH0, COUNT, NO_RATIO)

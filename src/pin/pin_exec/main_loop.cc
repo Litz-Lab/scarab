@@ -31,7 +31,7 @@ void undo_mem(const ProcState& undo_state) {
     void*  write_addr = (void*)undo_state.mem_state_list[i].mem_addr;
     UINT32 write_size = undo_state.mem_state_list[i].mem_size;
     void*  prev_data  = undo_state.mem_state_list[i].mem_data_ptr;
-    PIN_SafeCopy(write_addr, prev_data, write_size);
+    PIN_SafeCopy((void*)app_addr((ADDRINT)write_addr), prev_data, write_size);
   }
 }
 

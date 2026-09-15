@@ -166,7 +166,7 @@
 --pref_polpf_thresh=0.005
 --pref_update_interval=8192
 
---mem_req_buffer_pref_watermark 4
+--mem_req_buffer_demand_reserve 4
 --promote_to_higher_priority_mem_req_type 1
 
 ### Memory

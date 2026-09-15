@@ -87,6 +87,21 @@ PINPLAY_LIBS=-L$(SDE_ROOT)/lib/$(TARGET) -L$(PINPLAY_ROOT)/$(TARGET) -lpinplay -
 PINPLAY_LINK_DEPS=$(PINPLAY_ROOT)/$(TARGET)/libpinplay.a $(SDE_ROOT)/lib/$(TARGET)/libsde.a
 endif
 
+# Objects carry no record of the flags that built them, so flipping PinPlay used
+# to re-link only: the tool kept whichever variant the existing objects were, and
+# the mismatch surfaced at run time -- a plain-built object linked without libsde
+# dies with `cannot locate symbol "_Z8sde_initv"`, and the reverse silently keeps
+# an SDE tool in a tree someone thought they had switched back. Name a stamp file
+# after the mode so switching invalidates every object.
+PINPLAY_MODE := $(if $(ENABLE_PINPLAY),pinplay,plain)
+BUILD_MODE_STAMP := $(OBJDIR)build_mode.$(PINPLAY_MODE)
+
+$(BUILD_MODE_STAMP):
+	$(info pin_exec build mode is $(PINPLAY_MODE); rebuilding objects)
+	@mkdir -p $(OBJDIR)
+	@rm -f $(OBJDIR)build_mode.*
+	@touch $@
+
 #allow deprecated-declarations to enable compiling with newer PIN version e.g. 3.15 that define new APIs
 TOOL_CXXFLAGS += -std=c++14 -g3 -static -I$(SCARAB_DIR) -Wno-error=deprecated-declarations
 TOOL_LDFLAGS += -std=c++14
@@ -117,10 +132,10 @@ debug: objects libs dlls apps tools
 
 pin_exec: $(OBJDIR)pin_exec.so
 
-$(OBJDIR)%.o: $(COMMON_LIB_PATH)/%.cc
+$(OBJDIR)%.o: $(COMMON_LIB_PATH)/%.cc $(BUILD_MODE_STAMP)
 	$(CXX) $(TOOL_CXXFLAGS) $(COMP_OBJ)$@ $< -MMD -DPIN_COMPILE
 
-$(OBJDIR)%.o: %.cc
+$(OBJDIR)%.o: %.cc $(BUILD_MODE_STAMP)
 	$(CXX) $(TOOL_CXXFLAGS) $(COMP_OBJ)$@ $< -MMD -DPIN_COMPILE
 
 commonlibs: $(COMMON_LIB_OBJFILES)
@@ -132,7 +147,7 @@ $(OBJDIR)pin_exec$(PINTOOL_SUFFIX): $(OBJDIR)pin_exec$(OBJ_SUFFIX) $(SOURCE_OBJF
 	$(LINKER) $(TOOL_LDFLAGS) $(LINK_EXE)$@ $< $(SOURCE_OBJFILES) $(COMMON_LIB_OBJFILES) $(TOOL_LPATHS) $(PINPLAY_LIBS) $(TOOL_LIBS)
 
 
-$(OBJDIR)pin_exec$(OBJ_SUFFIX):pin_exec.cpp
+$(OBJDIR)pin_exec$(OBJ_SUFFIX):pin_exec.cpp $(BUILD_MODE_STAMP)
 	$(info invoking compile)
 	$(CXX) $(TOOL_CXXFLAGS) $(COMP_OBJ)$@ $< -MD -DPIN_COMPILE
 

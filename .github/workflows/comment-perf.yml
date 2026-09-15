@@ -121,16 +121,23 @@ jobs:
             // GitHub strips style attributes from markdown, so the previous
             // <span style="color:..."> rendered as plain text. Use an emoji,
             // which survives sanitising.
+            // Speed metrics vary run to run, so a small move there is noise:
+            // colour them by direction outside a tolerance. IPC does not vary --
+            // the same simulation on the same trace is deterministic -- so any
+            // difference at all is a change in Scarab's behaviour and is flagged,
+            // in either direction. Four decimals, because a drift of a few parts
+            // in ten thousand is exactly the kind that used to round to 1.00x.
             const EPS = 1e-3;
-            // higherIsBetter=false for instructions retired: more host work for
-            // the same simulation is a slowdown, so the colours flip.
-            function delta(sim, base, higherIsBetter = true) {
+            function delta(sim, base, {higherIsBetter = true, exact = false} = {}) {
               if (sim === null || base === null || base === 0) return 'n/a';
               const ratio = sim / base;
+              if (exact) {
+                return `${sim === base ? '🟢' : '🔴'} **${ratio.toFixed(4)}×**`;
+              }
               const up = higherIsBetter ? '🔵' : '🔴';
               const down = higherIsBetter ? '🔴' : '🔵';
               const mark = ratio > 1 + EPS ? up : ratio < 1 - EPS ? down : '🟢';
-              return `${mark} **${ratio.toFixed(2)}×**`;
+              return `${mark} **${ratio.toFixed(4)}×**`;
             }
             const show = (v) => (v === null ? 'n/a' : `\`${v}\``);
             // Instruction counts run to the trillions; group them so the two
@@ -146,8 +153,8 @@ jobs:
               '| Metric | PR | Baseline | Δ |',
               '| ------ | --: | -------: | :- |',
               `| **KIPS** | ${show(simKips)} | ${show(baseKips)} | ${delta(simKips, baseKips)} |`,
-              `| **IPC** | ${show(simIpc)} | ${show(baseIpc)} | ${delta(simIpc, baseIpc)} |`,
-              `| **Instructions** | ${showInt(simInsts)} | ${showInt(baseInsts)} | ${delta(simInsts, baseInsts, false)} |`,
+              `| **IPC** | ${show(simIpc)} | ${show(baseIpc)} | ${delta(simIpc, baseIpc, { exact: true })} |`,
+              `| **Instructions** | ${showInt(simInsts)} | ${showInt(baseInsts)} | ${delta(simInsts, baseInsts, { higherIsBetter: false })} |`,
               '',
               `<sub>commit ${context.payload.workflow_run.head_sha.slice(0, 7)}</sub>`,
             ].join('\n');

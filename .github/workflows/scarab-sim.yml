@@ -17,6 +17,29 @@ on:
         required: false
         default: false
         type: boolean
+      # Both repositories run this workflow, each pinning the other side to main:
+      # a Scarab PR tests its own tree against scarab-infra main, a scarab-infra
+      # PR tests its own tree against Scarab main. Defaults describe the latter.
+      scarab_repository:
+        description: Repository holding the Scarab tree under test.
+        required: false
+        default: litz-lab/scarab
+        type: string
+      scarab_ref:
+        description: Scarab ref to test. Callers in Scarab pass their own sha.
+        required: false
+        default: main
+        type: string
+      infra_repository:
+        description: Repository holding the scarab-infra tree under test.
+        required: false
+        default: litz-lab/scarab-infra
+        type: string
+      infra_ref:
+        description: scarab-infra ref to test. Callers in scarab-infra pass their own sha.
+        required: false
+        default: main
+        type: string
     outputs:
       ipc:
         description: Parsed IPC value
@@ -38,13 +61,16 @@ jobs:
     steps:
       - name: Checkout Scarab
         uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.scarab_repository }}
+          ref: ${{ inputs.scarab_ref }}
 
       - name: Checkout scarab-infra
         uses: actions/checkout@v5
         with:
-          repository: litz-lab/scarab-infra
+          repository: ${{ inputs.infra_repository }}
           path: infra
-          ref: refs/heads/main
+          ref: ${{ inputs.infra_ref }}
           fetch-depth: 0
 
       - name: Allow Git in container
@@ -98,6 +124,18 @@ jobs:
           d["scarab_path"] = os.environ["GITHUB_WORKSPACE"] + "/"
           d["root_dir"] = os.environ["GITHUB_WORKSPACE"] + "/"
           d["traces_dir"] = os.environ["GITHUB_WORKSPACE"] + "/traces_top_simpoint"
+          # Cover the exec-driven frontend too. Which simulations CI runs is CI's
+          # business, so it is declared here rather than in scarab-infra's
+          # descriptor; the workload's program is installed into application_dir
+          # by the step below.
+          d["simulations"].append({
+              "suite": "dhrystone",
+              "subsuite": "dhrystone",
+              "workload": "dhrystone",
+              "cluster_id": 0,
+              "simulation_type": "exec",
+              "warmup": 1000000,
+          })
           src.write_text(json.dumps(d, indent=2, separators=(',', ':')) + "\n")
           PY
         env:
@@ -118,6 +156,15 @@ jobs:
           trace_home: ${{ github.workspace }}/traces_top_simpoint
         run: ./sci --lint-scarab ${{ inputs.sci_id }}
 
+      # The exec-driven workload's program is a local directory the descriptor
+      # points at, exactly as SPEC is on a lab machine. A runner has no such
+      # tree, so put one here: application_dir is patched to the workspace.
+      - name: Install exec-driven application binaries
+        run: |
+          wget -q https://github.com/litz-lab/scarab-infra/releases/download/dhrystone-2.1/dhrystone-2.1-x86_64-static.tar.gz -O "$RUNNER_TEMP/dhrystone.tar.gz"
+          tar -xzf "$RUNNER_TEMP/dhrystone.tar.gz" -C "$GITHUB_WORKSPACE"
+          rm -f "$RUNNER_TEMP/dhrystone.tar.gz"
+
       - name: Run scarab simulation
         working-directory: infra
         env:
@@ -136,9 +183,18 @@ jobs:
             echo "Missing status line for this_pr"
             exit 1
           fi
-          completed=$(printf '%s\n' "$status_line" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$2); print $2}')
-          if [ "$completed" != "1" ]; then
-            echo "Expected 1 completed simulation for this_pr, got '$completed'"
+          field() { printf '%s\n' "$status_line" | awk -F'|' -v c="$1" '{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$c); print $c}'; }
+          completed=$(field 2)
+          total=$(field 8)
+          # Compare against the descriptor's own total rather than a literal, so
+          # adding a simulation to the CI descriptor does not silently pass here
+          # while failing to run, and does not need an edit in two repositories.
+          if [ -z "$total" ] || [ "$total" -lt 1 ] 2>/dev/null; then
+            echo "No simulations expanded for this_pr (total='$total')"
+            exit 1
+          fi
+          if [ "$completed" != "$total" ]; then
+            echo "Expected $total completed simulations for this_pr, got '$completed'"
             exit 1
           fi
 

@@ -37,6 +37,19 @@
 #include "read_mem_map.h"
 #include "utils.h"
 
+#ifdef ENABLE_PINPLAY
+#include "pinplay.H"
+extern PINPLAY_ENGINE* scarab_pinplay_engine;
+#endif
+
+static inline ADDRINT app_addr(ADDRINT a) {
+#ifdef ENABLE_PINPLAY
+  if (scarab_pinplay_engine && scarab_pinplay_engine->IsReplayerActive())
+    return scarab_pinplay_engine->ReplayerTranslateAddress(a);
+#endif
+  return a;
+}
+
 // Global Variables
 extern std::ostream* out;
 

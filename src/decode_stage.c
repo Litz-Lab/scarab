@@ -278,7 +278,7 @@ void decode_stage_process_op(Op* op) {
       op->bp_pred_info->pred = op->oracle_info.dir;
 
       // stats for the reason of resteer
-      STAT_EVENT(dec->proc_id, RESTEER_BTB_MISS_CF_BR + cf);
+      STAT_EVENT(dec->proc_id, RESTEER_BTB_MISS_NOT_CF + cf);
     }
 
     if (FDIP_DUAL_PATH_PREF_UOC_ONLINE_ENABLE)

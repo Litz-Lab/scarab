@@ -93,7 +93,8 @@
 --dcache_read_ports             1
 --dcache_write_ports            1
 --dcache_banks                  8
---dcache_assoc		        4
+--dcache_assoc		        8
+--dcache_cycles                 3   # 4-cycle load-use = AGEN(1) + dcache(3)
 --dcache_line_size              64
 
 ### Reorder/Retire Stage
@@ -155,7 +156,7 @@
 --pref_polpf_thresh=0.005
 --pref_update_interval=8192
 
---mem_req_buffer_pref_watermark 4
+--mem_req_buffer_demand_reserve 4
 --promote_to_higher_priority_mem_req_type 1
 
 ### Memory

@@ -169,8 +169,8 @@ void save_mem(ADDRINT write_addr, UINT32 write_size, UINT write_index) {
 
   checkpoints.get_tail().mem_state_list[write_index].init(write_addr,
                                                           write_size);
-  PIN_SafeCopy(checkpoints.get_tail().mem_state_list[write_index].mem_data_ptr,
-               (void*)write_addr, write_size);
+  PIN_SafeCopy(checkpoints.get_tail().mem_state_list[write_index].mem_data_ptr, (void*)app_addr(write_addr),
+               write_size);
 #endif
 }
 

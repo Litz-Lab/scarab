@@ -199,6 +199,24 @@ uns get_param_file_args_and_command_line_args(char*** arg_list, int argc, char* 
 
 /**************************************************************************************/
 /**************************************************************************************/
+/* get_index_hash: Converts the optarg into a number by looking it up in the
+ * index_hash_table. */
+
+void get_index_hash_param(const char* name, uns* variable) {
+  if (optarg) {
+    uns ii;
+
+    for (ii = 0; index_hash_table[ii].name; ii++)
+      if (strncmp(optarg, index_hash_table[ii].name, MAX_STR_LENGTH) == 0) {
+        *variable = ii;
+        return;
+      }
+    FATAL_ERROR(0, "Invalid value ('%s') for parameter '%s' --- Ignored.\n", optarg, name);
+  } else
+    FATAL_ERROR(0, "Parameter '%s' missing value --- Ignored.\n", name);
+}
+
+/**************************************************************************************/
 /* get_bp_mech: Converts the optarg into a number by looking it up in the
  * bp_table. */
 

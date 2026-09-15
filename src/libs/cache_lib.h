@@ -31,6 +31,7 @@
 
 #include "globals/global_defs.h"
 
+#include "libs/cache_index.h"
 #include "libs/list_lib.h"
 
 #ifdef __cplusplus
@@ -104,7 +105,7 @@ typedef enum Cache_Insert_Repl_enum {
   NUM_INSERT_REPL
 } Cache_Insert_Repl;
 
-typedef struct Cache_struct {
+struct Cache_struct {
   char name[MAX_STR_LENGTH + 1]; /* name to identify the cache (for debugging) */
   uns data_size;                 /* how big are the data items in each cache entry? (for malloc) */
 
@@ -113,6 +114,8 @@ typedef struct Cache_struct {
   uns num_sets;            /* number of sets in the cache */
   uns line_size;           /* size in bytes of one line */
   Repl_Policy repl_policy; /* the replacement policy of the cache */
+
+  Cache_Index_State cache_index_state;
 
   /* each mask looks like this:
    *      addr: MSB [tag_bits][set_bits][shift_bits] LSB
@@ -159,7 +162,7 @@ typedef struct Cache_struct {
 
   /* For repl with predictor */
   void* predictor;
-} Cache;
+};
 
 /**************************************************************************************/
 /* Strategy Design */
@@ -189,7 +192,7 @@ const static Flag CACHE_DEBUG_ENABLE = FALSE;  // To be Changed into DEBUG_PARA
 /* prototypes */
 
 void init_cache(Cache*, const char*, uns, uns, uns, uns, Repl_Policy);
-void init_cache_impl(Cache*, const char*, uns, uns, uns, uns, uns, Repl_Policy);
+void init_cache_impl(Cache*, const char*, uns, uns, uns, uns, uns, Repl_Policy, Cache_Index_Config);
 void* cache_access(Cache*, Addr, Addr*, Flag);
 void* cache_access_impl(Cache*, Addr, Addr*, Flag*, Flag);
 void* cache_insert(Cache*, uns8, Addr, Addr*, Addr*);

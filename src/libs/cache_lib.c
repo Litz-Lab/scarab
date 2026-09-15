@@ -78,7 +78,7 @@ static inline uns cache_index(Cache* cache, Addr addr, Addr* tag, Addr* tag_full
     *line_addr = addr;  // When the tag incl offset, cache is BYTE-addressable
   } else {
     Addr _tag;
-    _tag = *tag_full = addr >> cache->shift_bits & ~cache->set_mask;
+    _tag = *tag_full = addr >> cache->shift_bits;
     // chunk XOR folding
     if (cache->tag_bits < 64) {
       while ((_tag >> cache->tag_bits) != 0) {
@@ -88,7 +88,7 @@ static inline uns cache_index(Cache* cache, Addr addr, Addr* tag, Addr* tag_full
     *tag = _tag & cache->tag_pure_mask;
     *line_addr = addr & ~cache->offset_mask;
   }
-  return addr >> cache->shift_bits & cache->set_mask;
+  return cache_index_get_set(cache, addr);
 }
 
 uns ext_cache_index(Cache* cache, Addr addr, Addr* tag, Addr* line_addr) {
@@ -101,11 +101,12 @@ uns ext_cache_index(Cache* cache, Addr addr, Addr* tag, Addr* line_addr) {
 
 void init_cache(Cache* cache, const char* name, uns cache_size, uns assoc, uns line_size, uns data_size,
                 Repl_Policy repl_policy) {
-  init_cache_impl(cache, name, cache_size, assoc, line_size, 64, data_size, repl_policy);
+  init_cache_impl(cache, name, cache_size, assoc, line_size, 64, data_size, repl_policy,
+                  get_default_cache_index_config());
 }
 
 void init_cache_impl(Cache* cache, const char* name, uns cache_size, uns assoc, uns line_size, uns tag_bits,
-                     uns data_size, Repl_Policy repl_policy) {
+                     uns data_size, Repl_Policy repl_policy, Cache_Index_Config idx_cfg) {
   uns num_lines = cache_size / line_size;
   uns num_sets = cache_size / line_size / assoc;
   uns ii, jj;
@@ -134,6 +135,9 @@ void init_cache_impl(Cache* cache, const char* name, uns cache_size, uns assoc, 
   cache->tag_pure_mask = tag_bits == 64 ? N_BIT_MASK_64 : N_BIT_MASK(tag_bits);
   cache->tag_mask = cache->tag_pure_mask << LOG2(num_sets); /* use after shifting */
   cache->offset_mask = N_BIT_MASK(cache->shift_bits); /* use before shifting */
+
+  /* set up the index-hash state */
+  cache_index_state_init(cache, idx_cfg);
 
   /* allocate memory for NMRU replacement counters  */
   cache->repl_ctrs = (uns*)calloc(num_sets, sizeof(uns));
@@ -262,6 +266,11 @@ void* cache_access_impl(Cache* cache, Addr addr, Addr* line_addr, Flag* tag_alia
       line_data = line->data;
     }
   }
+
+  /* Drive adaptive-index training/remapping on demand accesses. Done after the lookup
+     so this access used the pre-update index function. No-op for static index hashes. */
+  if (update_repl)
+    cache_index_on_access(cache, addr, line_data != NULL);
 
   if (line_data)
     return line_data;
@@ -1122,6 +1131,9 @@ void reset_cache(Cache* cache) {
       cache->entries[ii][jj].valid = FALSE;
     }
   }
+
+  // Clear any adaptive-index training state; keep the current index function.
+  cache_index_state_reset(cache);
 }
 
 /**************************************************************************************/
@@ -1404,6 +1416,10 @@ void general_action_init(Cache* cache, const char* name, uns cache_size, uns ass
         cache->entries[ii][jj].data = INIT_CACHE_DATA_VALUE;
     }
   }
+
+  /* Strategy (REPL_VOID and above) caches use the identity index hash. This also initializes
+     the index state for the strategy path, which init_cache_impl skips via its early return. */
+  cache_index_state_init(cache, get_default_cache_index_config());
 }
 
 void general_action_repl(Cache* cache, Cache_Entry* new_line, uns8 proc_id, Addr tag, Addr tag_full, Addr* line_addr,

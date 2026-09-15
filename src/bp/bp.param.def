@@ -82,25 +82,43 @@ DEF_PARAM(  bp_hash_tos               , BP_HASH_TOS               , Flag    , Fl
 DEF_PARAM(  ibtb_hash_tos             , IBTB_HASH_TOS             , Flag    , Flag       , FALSE      ,        )
 
 DEF_PARAM(  btb_mech                  , BTB_MECH                  , uns     , btb_mech   , GENERIC_BTB,        )
+DEF_PARAM(  btb_hash                  , BTB_HASH                  , uns     , index_hash , ID_HASH    ,        )
 DEF_PARAM(  btb_entries               , BTB_ENTRIES               , uns     , uns        , 12288      ,        )
 DEF_PARAM(  btb_assoc                 , BTB_ASSOC                 , uns     , uns        , 4          ,        )
 DEF_PARAM(  btb_tag_bits              , BTB_TAG_BITS              , uns     , uns        , 64         ,        )
 DEF_PARAM(  btb_banks                 , BTB_BANKS                 , uns     , uns        , 1          ,        ) /* number of banks interleaved */
 DEF_PARAM(  btb_num_brslot            , BTB_NUM_BRSLOT            , uns     , uns        , 1          ,        ) /* number of branch slots per block */
 DEF_PARAM(  btb_block_size            , BTB_BLOCK_SIZE            , uns64   , uns64      , 64         ,        ) /* number of max bytes within a block (Note x86 has variable inst size) */
+DEF_PARAM(  btb_num_track_bits        , BTB_NUM_TRACK_BITS        , uns     , uns        , 64         ,        ) /* used when BTB_HASH == ENTROPY_INDEX */
+DEF_PARAM(  btb_interval_size         , BTB_INTERVAL_SIZE         , uns     , uns        , 1000000    ,        ) /* used when BTB_HASH == ENTROPY_INDEX */
+DEF_PARAM(  btb_remap_rate            , BTB_REMAP_RATE            , uns     , uns        , 80         ,        ) /* used when BTB_HASH == ENTROPY_INDEX */
+DEF_PARAM(  btb_switch_thresh_pct     , BTB_SWITCH_THRESH_PCT     , int     , int        , -1         ,        ) /* used when BTB_HASH == ENTROPY_INDEX */
+DEF_PARAM(  btb_csv_map_file          , BTB_CSV_MAP_FILE          , char*   , string     , NULL       ,        ) /* used when BTB_HASH == CSV_MAP */
 DEF_PARAM(  btb_off_path_writes       , BTB_OFF_PATH_WRITES       , Flag    , Flag       , TRUE       ,        ) /* const */
 DEF_PARAM(  btb_main_latency         , BTB_MAIN_LATENCY          , uns     , uns        , 3          ,        )
 DEF_PARAM(  btb_l0_present           , BTB_L0_PRESENT            , Flag    , Flag       , FALSE      ,        )
+DEF_PARAM(  btb_l0_hash              , BTB_L0_HASH               , uns     , index_hash , ID_HASH    ,        )
 DEF_PARAM(  btb_l0_entries           , BTB_L0_ENTRIES            , uns     , uns        , 128        ,        )
 DEF_PARAM(  btb_l0_assoc             , BTB_L0_ASSOC              , uns     , uns        , 4          ,        )
 DEF_PARAM(  btb_l0_tag_bits          , BTB_L0_TAG_BITS           , uns     , uns        , 64         ,        )
 DEF_PARAM(  btb_l0_banks             , BTB_L0_BANKS              , uns     , uns        , 1          ,        ) /* number of banks interleaved */
+DEF_PARAM(  btb_l0_num_track_bits    , BTB_L0_NUM_TRACK_BITS     , uns     , uns        , 64         ,        ) /* used when BTB_L0_HASH == ENTROPY_INDEX */
+DEF_PARAM(  btb_l0_interval_size     , BTB_L0_INTERVAL_SIZE      , uns     , uns        , 1000000    ,        ) /* used when BTB_L0_HASH == ENTROPY_INDEX */
+DEF_PARAM(  btb_l0_remap_rate        , BTB_L0_REMAP_RATE         , uns     , uns        , 80         ,        ) /* used when BTB_L0_HASH == ENTROPY_INDEX */
+DEF_PARAM(  btb_l0_switch_thresh_pct , BTB_L0_SWITCH_THRESH_PCT  , int     , int        , -1         ,        ) /* used when BTB_L0_HASH == ENTROPY_INDEX */
+DEF_PARAM(  btb_l0_csv_map_file      , BTB_L0_CSV_MAP_FILE       , char*   , string     , NULL       ,        ) /* used when BTB_L0_HASH == CSV_MAP */
 DEF_PARAM(  btb_l0_latency           , BTB_L0_LATENCY            , uns     , uns        , 1          ,        )
 DEF_PARAM(  btb_l1_present           , BTB_L1_PRESENT            , Flag    , Flag       , FALSE      ,        )
+DEF_PARAM(  btb_l1_hash              , BTB_L1_HASH               , uns     , index_hash , ID_HASH    ,        )
 DEF_PARAM(  btb_l1_entries           , BTB_L1_ENTRIES            , uns     , uns        , 6144       ,        )
 DEF_PARAM(  btb_l1_assoc             , BTB_L1_ASSOC              , uns     , uns        , 4          ,        )
 DEF_PARAM(  btb_l1_tag_bits          , BTB_L1_TAG_BITS           , uns     , uns        , 64         ,        )
 DEF_PARAM(  btb_l1_banks             , BTB_L1_BANKS              , uns     , uns        , 1          ,        ) /* number of banks interleaved */
+DEF_PARAM(  btb_l1_num_track_bits    , BTB_L1_NUM_TRACK_BITS     , uns     , uns        , 64         ,        ) /* used when BTB_L1_HASH == ENTROPY_INDEX */
+DEF_PARAM(  btb_l1_interval_size     , BTB_L1_INTERVAL_SIZE      , uns     , uns        , 1000000    ,        ) /* used when BTB_L1_HASH == ENTROPY_INDEX */
+DEF_PARAM(  btb_l1_remap_rate        , BTB_L1_REMAP_RATE         , uns     , uns        , 80         ,        ) /* used when BTB_L1_HASH == ENTROPY_INDEX */
+DEF_PARAM(  btb_l1_switch_thresh_pct , BTB_L1_SWITCH_THRESH_PCT  , int     , int        , -1         ,        ) /* used when BTB_L1_HASH == ENTROPY_INDEX */
+DEF_PARAM(  btb_l1_csv_map_file      , BTB_L1_CSV_MAP_FILE       , char*   , string     , NULL       ,        ) /* used when BTB_L1_HASH == CSV_MAP */
 DEF_PARAM(  btb_l1_latency           , BTB_L1_LATENCY            , uns     , uns        , 2          ,        )
 
 DEF_PARAM(  enable_crs                , ENABLE_CRS                , Flag    , Flag       , TRUE       ,        )

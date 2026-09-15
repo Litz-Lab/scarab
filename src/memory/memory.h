@@ -101,8 +101,12 @@ typedef struct Mem_Queue_Entry_struct {
 typedef struct Mem_Queue_struct {
   Mem_Queue_Entry* base;
   int entry_count;
-  int reserved_entry_count; /* for HIER_MSHR_ON */
+  int reserved_entry_count;
   uns size;
+  /* Outstanding misses this level is tracking. Separate from size: entries are
+     pipeline occupancy, MSHRs are fills in flight. */
+  uns mshr_size;
+  uns mshr_wb_reserve;
   char name[20];
   Mem_Queue_Type type;
 } Mem_Queue;
@@ -142,6 +146,7 @@ typedef struct Memory_struct {
   List req_buffer_free_list;
   List* l1_in_buffer_core;
   uns total_mem_req_buffers;
+  uns req_buffers_per_core; /* derived from the queues and what DRAM holds */
   uns* num_req_buffers_per_core;
 
   int req_count;
@@ -247,7 +252,9 @@ Flag l1_fill_line(Mem_Req* req);
 
 void mark_ops_as_l1_miss_satisfied(Mem_Req* req);
 int mem_get_req_count(uns proc_id);
-Flag mem_can_allocate_req_buffer(uns proc_id, Mem_Req_Type type, Flag for_l1_writeback);
+/* Per-core request-buffer budget. Equals MEM_REQ_BUFFER_ENTRIES unless
+   derived from the per-level queue sizes. */
+uns mem_get_req_buffer_size(void);
 
 void open_mem_stat_interval_file(void);
 void close_mem_stat_interval_file(void);
@@ -277,5 +284,7 @@ extern Memory* mem;
 extern Freq_Domain_Id FREQ_DOMAIN_CHIP;
 extern Freq_Domain_Id FREQ_DOMAIN_MEMORY;
 extern Counter mem_seq_num;
+
+Flag mem_demote_to_mlc(uns8 proc_id, Addr line_addr, Flag dirty, Flag prefetch, Flag seen_prefetch);
 
 #endif /* #ifndef __MEMORY_H__*/

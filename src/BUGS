@@ -1,7 +1,7 @@
 2       OPEN    Trace frontend: no FPST input in the FUCOMPP instruction (and possibly others)
 8       OPEN    Tracing pintool: read.C doesn't work
 18      OPEN    Not modeling a limited number of multipliers and dividers
-20      OPEN    Param MEM_REQ_BUFFER_PREF_WATERMARK is based on free list count (is it OK?)
+20      OPEN    Param MEM_REQ_BUFFER_DEMAND_RESERVE is based on free list count (is it OK?)
 21      OPEN    Mem ops that miss in dcache and can't get a mem req can saturate FUs
 22      OPEN    make valgrind fails with trace frontend (currently disabled)
 24      OPEN    McPAT interface ignores branch predictor parameters

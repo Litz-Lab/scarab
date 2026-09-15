@@ -80,3 +80,7 @@ uint64_t start_rip;
 bool track_at_instr = true;
 
 ADDRINT prior_rep_eip = 0;
+
+#ifdef ENABLE_PINPLAY
+PINPLAY_ENGINE* scarab_pinplay_engine = NULL;
+#endif

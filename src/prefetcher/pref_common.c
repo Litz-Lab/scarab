@@ -860,13 +860,6 @@ void pref_update_core(uns proc_id) {
         info.global_hist = dl0req_queue[q_index].global_hist;
         info.bw_limited = dl0req_queue[q_index].bw_limited;
         info.dest = DEST_DCACHE;
-        // leave room in the mem req buffer for demand traffic
-        if ((model->mem == MODEL_MEM) &&
-            ((MEM_REQ_BUFFER_ENTRIES - mem_get_req_count(proc_id)) < PREF_L1Q_DEMAND_RESERVE)) {
-          STAT_EVENT(0, PREF_MLCQ_STALL);
-          inc_send_pos = FALSE;
-          break;
-        }
         if ((model->mem == MODEL_MEM) &&
             new_mem_req(MRT_DPRF, proc_id, dl0req_queue[q_index].line_addr, DCACHE_LINE_SIZE, 1, NULL, dcache_fill_line,
                         unique_count, &info)) {
@@ -911,18 +904,6 @@ void pref_update_core(uns proc_id) {
 
       ASSERT(proc_id, proc_id == umlc_req_queue[q_index].proc_id);
       ASSERT(proc_id, proc_id == umlc_req_queue[q_index].line_addr >> 58);
-      // check if there is enough space in the mem req buffer
-      if ((model->mem == MODEL_MEM) && ((MEM_REQ_BUFFER_ENTRIES - mem_get_req_count(proc_id)) <
-                                        PREF_L1Q_DEMAND_RESERVE)) {  // really req buffer demand reserve
-        STAT_EVENT(0, PREF_MLCQ_STALL);
-        if (PREF_REQ_DROP && MEM_REQ_BUFFER_ENTRIES == mem_get_req_count(proc_id)) {
-          umlc_req_queue[q_index].valid = FALSE;
-        } else {
-          inc_send_pos = FALSE;
-        }
-
-        break;
-      }
       if ((model->mem == MODEL_MEM) &&
           new_mem_req(MRT_DPRF, proc_id, umlc_req_queue[q_index].line_addr, MLC_LINE_SIZE, 1, NULL, NULL, unique_count,
                       &info)) {  // CMP maybe unique_count_per_core[proc_id]?
@@ -963,17 +944,6 @@ void pref_update_core(uns proc_id) {
 
       ASSERT(proc_id, proc_id == ul1req_queue[q_index].proc_id);
       ASSERT(proc_id, proc_id == ul1req_queue[q_index].line_addr >> 58);
-      // check if there is enough space in the mem req buffer
-      if ((model->mem == MODEL_MEM) &&
-          ((MEM_REQ_BUFFER_ENTRIES - mem_get_req_count(proc_id)) < PREF_L1Q_DEMAND_RESERVE)) {
-        STAT_EVENT(0, PREF_L1Q_STALL);
-        if (PREF_REQ_DROP && MEM_REQ_BUFFER_ENTRIES == mem_get_req_count(proc_id)) {
-          ul1req_queue[q_index].valid = FALSE;
-        } else {
-          inc_send_pos = FALSE;
-        }
-        break;
-      }
       if ((model->mem == MODEL_MEM) && new_mem_req(MRT_DPRF, proc_id, ul1req_queue[q_index].line_addr, L1_LINE_SIZE, 1,
                                                    NULL, STREAM_PREF_INTO_DCACHE ? dcache_fill_line : NULL,
                                                    unique_count, &info)) {  // CMP maybe unique_count_per_core[proc_id]?

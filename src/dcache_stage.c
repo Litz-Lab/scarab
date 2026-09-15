@@ -577,8 +577,15 @@ static inline void dcache_miss_extra_access(Op* op, Cache* cache, Addr line_addr
 }
 
 static inline Flag dcache_miss_new_mem_req(Op* op, Addr line_addr, Mem_Req_Type mem_req_type) {
-  return new_mem_req((mem_req_type), dc->proc_id, line_addr, DCACHE_LINE_SIZE,
-                     DCACHE_CYCLES - 1 + op->uop->extra_ld_latency, op, dcache_fill_line, op->unique_num, 0);
+  Flag sent = new_mem_req((mem_req_type), dc->proc_id, line_addr, DCACHE_LINE_SIZE,
+                          DCACHE_CYCLES - 1 + op->uop->extra_ld_latency, op, dcache_fill_line, op->unique_num, 0);
+  Node_Stage* node = &cmp_model.node_stage[dc->proc_id];
+  if (sent && node->mem_blocked) {
+    node->mem_blocked = FALSE;
+    STAT_EVENT(dc->proc_id, MEM_BLOCK_LENGTH_0 + MIN2(node->mem_block_length, 5000) / 100);
+    node->mem_block_length = 0;
+  }
+  return sent;
 }
 
 static inline void dcache_cacheline_hit(Op* op, Addr line_addr, Dcache_Data* line) {
@@ -798,6 +805,19 @@ static inline Dcache_Data* dcache_fill_get_cacheline(Mem_Req* req) {
    */
   Flag repl_line_valid;
   data = (Dcache_Data*)get_next_repl_line(&dc->dcache, dc->proc_id, req->addr, &repl_line_addr, &repl_line_valid);
+
+  /* Exclusive hierarchy: the victim moves down a level instead of vanishing, unless it is
+     an unused prefetch and we were asked to drop those. This runs before the writeback so
+     that a demotion memory refuses leaves nothing half-done and the fill just retries. */
+  if (EXCLUSIVE_CACHES && repl_line_valid) {
+    if (EXCLUSIVE_DROP_UNUSED_PREF && data->HW_prefetch) {
+      STAT_EVENT(dc->proc_id, EXCL_DROP_UNUSED_PREF);
+    } else if (!mem_demote_to_mlc(get_proc_id_from_cmp_addr(repl_line_addr), repl_line_addr, data->dirty,
+                                  data->HW_prefetched, data->HW_prefetched && !data->HW_prefetch)) {
+      return NULL;
+    }
+  }
+
   if (repl_line_valid && data->dirty) {
     /* need to do a write-back */
     uns repl_proc_id = get_proc_id_from_cmp_addr(repl_line_addr);
