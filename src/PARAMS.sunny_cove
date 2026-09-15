@@ -114,7 +114,9 @@
 --dcache_banks                  8
 --dcache_assoc		            12
 --dcache_line_size              64
---dcache_cycles                 4   # 5 for complex mem addr
+--dcache_cycles                 4   # load-use 5 = AGEN(1) + 4
+--dcq_to_mlcq_transfer_latency   1
+--mlcq_to_l1q_transfer_latency   2
 
 ### Reorder/Retire Stage
 
@@ -138,14 +140,14 @@
 --mlc_present                   1
 --mlc_size                      524288
 --mlc_assoc                     8
---mlc_cycles                    13
+--mlc_cycles                    13  # L2 load-use, AGEN to data
 
 
 ### LLC
 # 2 MiB per core, 16-way
 --l1_size                       2097152
 --l1_banks                      8
---l1_cycles		                36          // just a guess
+--l1_cycles		                45          # L3 load-use, AGEN to data
 --l1_assoc                      16
 --l1_line_size                  64
 --l1_interleave_factor          64
