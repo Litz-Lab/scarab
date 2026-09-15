@@ -300,7 +300,8 @@ void init_memory() {
      is the MSHR file at each level, what DRAM is holding, and the accesses still in
      a lookup pipeline, which have not claimed an MSHR yet. */
   mem->req_buffers_per_core = MLC_MSHRS + L1_MSHRS + RAMULATOR_READQ_ENTRIES + RAMULATOR_WRITEQ_ENTRIES +
-                              MLC_BANKS * MLC_CYCLES + L1_BANKS * L1_CYCLES;
+                              MLC_BANKS * (MLC_CYCLES - DCACHE_CYCLES - DCQ_TO_MLCQ_TRANSFER_LATENCY) +
+                              L1_BANKS * (L1_CYCLES - MLC_CYCLES - MLCQ_TO_L1Q_TRANSFER_LATENCY);
   mem->total_mem_req_buffers = mem->req_buffers_per_core * (PRIVATE_MSHR_ON ? NUM_CORES : 1);
   /* Record it: the derived size is not a parameter, so PARAMS.out still shows
      mem_req_buffer_entries, which is no longer what the buffer is. */
@@ -901,7 +902,11 @@ void mem_start_mlc_access(Mem_Req* req) {
 
     avail = TRUE;
     req->state = MRS_MLC_WAIT;
-    req->rdy_cycle = cycle_count + MLC_CYCLES;
+    /* MLC_CYCLES is the whole load-to-use of an MLC hit. Charge only what this
+       request has not already paid: the dcache access, and the trip over, which a
+       prefetch born here never makes. */
+    ASSERT(req->proc_id, MLC_CYCLES > DCACHE_CYCLES + DCQ_TO_MLCQ_TRANSFER_LATENCY);
+    req->rdy_cycle = cycle_count + MLC_CYCLES - DCACHE_CYCLES - DCQ_TO_MLCQ_TRANSFER_LATENCY;
   }
 
   if (need_wp)
@@ -929,14 +934,18 @@ void mem_start_l1_access(Mem_Req* req) {
 
     avail = TRUE;
     req->state = MRS_L1_WAIT;
+    /* Same rule one level down: L1_CYCLES is the whole load-to-use of an LLC hit,
+       less what the MLC hit already cost and the trip down from it. */
+    ASSERT(req->proc_id, L1_CYCLES > MLC_CYCLES + MLCQ_TO_L1Q_TRANSFER_LATENCY);
+    uns l1_lookup = L1_CYCLES - MLC_CYCLES - MLCQ_TO_L1Q_TRANSFER_LATENCY;
     if (L1_USE_CORE_FREQ) {
       // model cache as being in the requesting core's frequency domain
       // useful for modeling per-core DVFS with private LLCs
       Freq_Domain_Id core_domain = FREQ_DOMAIN_CORES[req->proc_id];
       Counter core_cycle_count = freq_cycle_count(core_domain);
-      req->rdy_cycle = freq_convert_future_cycle(core_domain, core_cycle_count + L1_CYCLES, FREQ_DOMAIN_L1);
+      req->rdy_cycle = freq_convert_future_cycle(core_domain, core_cycle_count + l1_lookup, FREQ_DOMAIN_L1);
     } else {
-      req->rdy_cycle = cycle_count + L1_CYCLES;
+      req->rdy_cycle = cycle_count + l1_lookup;
     }
 
     mem->uncores[req->proc_id].num_outstanding_l1_accesses++;

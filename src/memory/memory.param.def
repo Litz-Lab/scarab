@@ -56,7 +56,7 @@ DEF_PARAM(mlc_present, MLC_PRESENT, Flag, Flag, FALSE, )
 DEF_PARAM(mlc_size, MLC_SIZE, uns, uns, (512 * 1024), )
 DEF_PARAM(mlc_assoc, MLC_ASSOC, uns, uns, 4, )
 DEF_PARAM(mlc_line_size, MLC_LINE_SIZE, uns, uns, 64, )
-DEF_PARAM(mlc_cycles, MLC_CYCLES, uns, uns, 12, )
+DEF_PARAM(mlc_cycles, MLC_CYCLES, uns, uns, 14, )
 /* Exclusive cache hierarchy: a fill inserts the line only at the level the
    request targets, so a core-destined demand or prefetch load lands in the
    dcache alone. Lines reach the lower levels by demotion: a dcache victim is
@@ -85,7 +85,7 @@ DEF_PARAM(l1_assoc, L1_ASSOC, uns, uns, 8, )
 DEF_PARAM(l1_line_size, L1_LINE_SIZE, uns, uns,
           64, ) /* VA_PAGE_SIZE_BYTES, L1_INTERLEAVE_FACTOR is
                    dependent on this size*/
-DEF_PARAM(l1_cycles, L1_CYCLES, uns, uns, 24, )
+DEF_PARAM(l1_cycles, L1_CYCLES, uns, uns, 39, )
 DEF_PARAM(perfect_l1, PERFECT_L1, Flag, Flag, FALSE, )
 DEF_PARAM(private_l1, PRIVATE_L1, Flag, Flag, FALSE, )
 DEF_PARAM(l1_read_ports, L1_READ_PORTS, uns, uns, 1, )
@@ -234,6 +234,8 @@ DEF_PARAM(one_core_first_to_mem_queue_th, ONE_CORE_FIRST_TO_MEM_QUEUE_TH, uns,
           uns, 0, )
 
 DEF_PARAM(l1_cycle_time, L1_CYCLE_TIME, uns, uns, 312500, )
+DEF_PARAM(dcq_to_mlcq_transfer_latency, DCQ_TO_MLCQ_TRANSFER_LATENCY, uns, uns,
+          0, )
 DEF_PARAM(mlcq_to_l1q_transfer_latency, MLCQ_TO_L1Q_TRANSFER_LATENCY, uns, uns,
           1, )
 DEF_PARAM(l1q_to_fsb_transfer_latency, L1Q_TO_FSB_TRANSFER_LATENCY, uns, uns,

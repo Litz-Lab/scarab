@@ -861,8 +861,8 @@ void pref_update_core(uns proc_id) {
         info.bw_limited = dl0req_queue[q_index].bw_limited;
         info.dest = DEST_DCACHE;
         if ((model->mem == MODEL_MEM) &&
-            new_mem_req(MRT_DPRF, proc_id, dl0req_queue[q_index].line_addr, DCACHE_LINE_SIZE, 1, NULL, dcache_fill_line,
-                        unique_count, &info)) {
+            new_mem_req(MRT_DPRF, proc_id, dl0req_queue[q_index].line_addr, DCACHE_LINE_SIZE,
+                        DCQ_TO_MLCQ_TRANSFER_LATENCY, NULL, dcache_fill_line, unique_count, &info)) {
           dl0req_queue[q_index].valid = FALSE;  // issued: free the slot (no re-issue when send_pos wraps)
         } else {
           // not MODEL_MEM, or mem req buffer full: keep the entry valid and retry it next time.
@@ -905,7 +905,7 @@ void pref_update_core(uns proc_id) {
       ASSERT(proc_id, proc_id == umlc_req_queue[q_index].proc_id);
       ASSERT(proc_id, proc_id == umlc_req_queue[q_index].line_addr >> 58);
       if ((model->mem == MODEL_MEM) &&
-          new_mem_req(MRT_DPRF, proc_id, umlc_req_queue[q_index].line_addr, MLC_LINE_SIZE, 1, NULL, NULL, unique_count,
+          new_mem_req(MRT_DPRF, proc_id, umlc_req_queue[q_index].line_addr, MLC_LINE_SIZE, 0, NULL, NULL, unique_count,
                       &info)) {  // CMP maybe unique_count_per_core[proc_id]?
         DEBUG(0, "Sent req %llx to umlc Qpos:%d\n", umlc_req_queue[q_index].line_index, *umlc_req_queue_send_pos);
         STAT_EVENT(0, PREF_UMLC_REQ_QUEUE_SENTREQ);
@@ -944,7 +944,7 @@ void pref_update_core(uns proc_id) {
 
       ASSERT(proc_id, proc_id == ul1req_queue[q_index].proc_id);
       ASSERT(proc_id, proc_id == ul1req_queue[q_index].line_addr >> 58);
-      if ((model->mem == MODEL_MEM) && new_mem_req(MRT_DPRF, proc_id, ul1req_queue[q_index].line_addr, L1_LINE_SIZE, 1,
+      if ((model->mem == MODEL_MEM) && new_mem_req(MRT_DPRF, proc_id, ul1req_queue[q_index].line_addr, L1_LINE_SIZE, 0,
                                                    NULL, STREAM_PREF_INTO_DCACHE ? dcache_fill_line : NULL,
                                                    unique_count, &info)) {  // CMP maybe unique_count_per_core[proc_id]?
         DEBUG(0, "Sent req %llx to ul1 Qpos:%d\n", ul1req_queue[q_index].line_index, *ul1req_queue_send_pos);
