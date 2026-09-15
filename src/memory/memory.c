@@ -867,7 +867,6 @@ void update_memory() {
 
     perf_pred_cycle();
 
-    pref_update();
     update_memory_queues();
     update_on_chip_memory_stats();
 
@@ -886,6 +885,9 @@ void update_memory() {
 
     mem_process_l1_reqs();
     mem_process_mlc_reqs();
+    /* After the demand banks, so a bank a demand took this cycle cannot be taken
+       again by a prefetch: get_read_port is the per-cycle record of that. */
+    pref_update();
   }
 
   for (uns proc_id = 0; proc_id < NUM_CORES; proc_id++) {
@@ -1753,6 +1755,34 @@ static void mem_process_mlc_reqs() {
       continue;
     sl_list_remove_head(&q->banks[b]);
   }
+}
+
+/**************************************************************************************/
+/* mem_pref_probe: */
+/* A prefetcher looks its own level up, from its own queue, after the demand banks
+   have run. Takes a bank read port, so a bank a demand used this cycle refuses it.
+   Returns FALSE when the bank is busy: the prefetch keeps its place and retries. */
+
+Flag mem_pref_probe(uns8 proc_id, Destination dest, Addr line_addr, Flag* hit) {
+  Ports* ports;
+  Cache* cache;
+  Addr dummy_line_addr;
+
+  if (dest == DEST_MLC) {
+    ASSERT(proc_id, MLC_PRESENT);
+    ports = &MLC(proc_id)->ports[BANK(line_addr, MLC(proc_id)->num_banks, MLC_INTERLEAVE_FACTOR)];
+    cache = &MLC(proc_id)->cache;
+  } else {
+    ASSERT(proc_id, dest == DEST_L1);
+    ports = &L1(proc_id)->ports[BANK(line_addr, L1(proc_id)->num_banks, L1_INTERLEAVE_FACTOR)];
+    cache = &L1(proc_id)->cache;
+  }
+
+  if (!get_read_port(ports))
+    return FALSE;
+
+  *hit = cache_access(cache, line_addr, &dummy_line_addr, FALSE) != NULL;
+  return TRUE;
 }
 
 /**************************************************************************************/
@@ -2777,7 +2807,11 @@ Flag new_mem_req(Mem_Req_Type type, uns8 proc_id, Addr addr, uns size, uns delay
   Flag ramulator_match = FALSE;
   Counter priority_offset = freq_cycle_count(FREQ_DOMAIN_L1);
   Counter new_priority;
-  Flag to_mlc = MLC_PRESENT && (!pref_info || pref_info->dest != DEST_L1);
+  /* A probed prefetch has already missed in the level it targets, so it enters the
+     one below: an MLC prefetch goes to the LLC, and an LLC prefetch goes to DRAM. */
+  Flag probed = pref_info && pref_info->probed;
+  Flag to_dram = probed && pref_info->dest == DEST_L1;
+  Flag to_mlc = MLC_PRESENT && (!pref_info || pref_info->dest != DEST_L1) && !probed;
   Destination destination = (pref_info ? pref_info->dest : DEST_NONE);
 
   ASSERTM(proc_id, proc_id == get_proc_id_from_cmp_addr(addr), "Proc ID (%d) does not match proc ID in address (%d)!\n",
@@ -2848,10 +2882,16 @@ Flag new_mem_req(Mem_Req_Type type, uns8 proc_id, Addr addr, uns size, uns delay
                                         ramulator_match));
   }
 
-  /* Step 2.5: the level must have an MSHR for this request. */
+  /* Step 2.5: the level must have an MSHR for this request. A probed prefetch also
+     needs one at the level it missed in, so the fill comes back there. */
   Mem_Queue* target = to_mlc ? &mem->mlc_queue : &mem->l1_queue;
-  if (queue_mshr_full_for(target, type)) {
+  if (!to_dram && queue_mshr_full_for(target, type)) {
     STAT_EVENT(proc_id, to_mlc ? REJECTED_QUEUE_MLC : REJECTED_QUEUE_L1);
+    return FALSE;
+  }
+  Mem_Queue* probed_level = !probed ? NULL : (pref_info->dest == DEST_L1 ? &mem->l1_queue : &mem->mlc_queue);
+  if (probed_level && queue_mshr_full_for(probed_level, type)) {
+    STAT_EVENT(proc_id, pref_info->dest == DEST_L1 ? REJECTED_QUEUE_L1 : REJECTED_QUEUE_MLC);
     return FALSE;
   }
 
@@ -2929,6 +2969,33 @@ Flag new_mem_req(Mem_Req_Type type, uns8 proc_id, Addr addr, uns size, uns delay
   }
 
   perf_pred_l0_miss_start(new_req);
+
+  /* The level this prefetch probed keeps an MSHR so the fill lands there. */
+  if (probed_level) {
+    new_req->reserved_entry_count += 1;
+    new_req->reserved_levels |= (probed_level == &mem->mlc_queue) ? MEM_RES_MLC : MEM_RES_L1;
+    probed_level->mshrs_taken++;
+  }
+
+  /* An LLC prefetch that missed has no next level to be looked up in: it goes
+     straight to DRAM, holding the LLC MSHR taken just above. */
+  if (to_dram) {
+    new_req->state = MRS_MEM_NEW;
+    if (!ramulator_send(new_req)) {
+      probed_level->mshrs_taken--;
+      new_req->reserved_entry_count -= 1;
+      new_req->reserved_levels &= ~MEM_RES_L1;
+      mem_free_reqbuf(new_req);
+      STAT_EVENT(proc_id, REJECTED_QUEUE_L1);
+      return FALSE;
+    }
+    /* Same bookkeeping the ordinary LLC miss does when it reaches DRAM. */
+    new_req->queue = NULL;
+    mem_seq_num++;
+    perf_pred_mem_req_start(new_req);
+    mem->uncores[proc_id].num_outstanding_l1_misses++;
+    return TRUE;
+  }
 
   if (to_mlc)
     return insert_new_req_into_mlc_queue(proc_id, new_req);

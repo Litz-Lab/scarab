@@ -206,6 +206,9 @@ typedef struct Pref_Req_Info_Struct {
   uns distance;
   Flag bw_limited;
   Destination dest;  // Only MLC/L2 values matter
+  /* The prefetcher already looked this line up in dest's cache and missed, so the
+     request is born one level below, holding an MSHR at dest. */
+  Flag probed;
 } Pref_Req_Info;
 
 typedef enum L1_Dyn_Partition_Policy_enum {
@@ -244,6 +247,10 @@ Flag new_mem_req(Mem_Req_Type type, uns8 proc_id, Addr addr, uns size, uns delay
                  Counter unique_num, Pref_Req_Info*);
 void mem_free_reqbuf(Mem_Req* req);
 void mem_complete_bus_in_access(Mem_Req* req, Counter priority);
+
+/* Probe a level's cache for its prefetcher. FALSE means the bank was busy this
+   cycle; otherwise *hit says whether the line is already there. */
+Flag mem_pref_probe(uns8 proc_id, Destination dest, Addr line_addr, Flag* hit);
 void print_req_buffer(void);
 void print_mem_queue(Mem_Queue_Type queue_type);
 Flag new_mem_dc_wb_req(Mem_Req_Type type, uns8 proc_id, Addr addr, uns size, uns delay, Op* op,

@@ -86,9 +86,6 @@ DEF_PARAM( pref_ul1req_add_filter_on           , PREF_UL1REQ_ADD_FILTER_ON      
 DEF_PARAM( pref_dl0req_queue_overwrite_on_full , PREF_DL0REQ_QUEUE_OVERWRITE_ON_FULL , Flag            , Flag               , FALSE     ,    )
 DEF_PARAM( pref_umlc_req_queue_overwrite_on_full, PREF_UMLC_REQ_QUEUE_OVERWRITE_ON_FULL, Flag          , Flag               , FALSE     ,    )
 DEF_PARAM( pref_ul1req_queue_overwrite_on_full , PREF_UL1REQ_QUEUE_OVERWRITE_ON_FULL , Flag            , Flag               , FALSE     ,    )
-DEF_PARAM( pref_dl0schedule_num                , PREF_DL0SCHEDULE_NUM                , uns             , uns                , 4         ,    )
-DEF_PARAM( pref_umlc_schedule_num              , PREF_UMLC_SCHEDULE_NUM              , uns             , uns                , 4         ,    )
-DEF_PARAM( pref_ul1schedule_num                , PREF_UL1SCHEDULE_NUM                , uns             , uns                , 4         ,    )
 
 DEF_PARAM( pref_report_pref_match_as_miss      , PREF_REPORT_PREF_MATCH_AS_MISS      , Flag            , Flag               , FALSE     ,    )
 DEF_PARAM( pref_report_pref_match_as_hit       , PREF_REPORT_PREF_MATCH_AS_HIT       , Flag            , Flag               , TRUE      ,    )
