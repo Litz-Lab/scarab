@@ -2854,16 +2854,6 @@ Flag mem_adjust_matching_request(Mem_Req* req, Mem_Req_Type type, Addr addr, uns
 }
 
 /**************************************************************************************/
-/* queue_can_admit_req: */
-
-/* Can the level this request would enter still take it? */
-
-Flag queue_can_admit_req(uns proc_id, Mem_Req_Type type) {
-  Mem_Queue* queue = MLC_PRESENT ? &mem->mlc_queue : &mem->l1_queue;
-  return !queue_full_for_req(queue, type);
-}
-
-/**************************************************************************************/
 /* mem_allocate_req_buffer: */
 /* If queue is specified, only allocates if its entry_count < size */
 

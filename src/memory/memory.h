@@ -251,7 +251,6 @@ int mem_get_req_count(uns proc_id);
 /* Per-core request-buffer budget. Equals MEM_REQ_BUFFER_ENTRIES unless
    HIER_MSHR_ON, where it is derived from the per-level queue sizes. */
 uns mem_get_req_buffer_size(void);
-Flag queue_can_admit_req(uns proc_id, Mem_Req_Type type);
 
 void open_mem_stat_interval_file(void);
 void close_mem_stat_interval_file(void);
