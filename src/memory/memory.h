@@ -84,7 +84,6 @@ typedef enum Mem_Queue_Req_Result_enum {
 
 typedef enum Mem_Queue_Type_enum {
   QUEUE_L1 = 1 << 0,
-  QUEUE_BUS_OUT = 1 << 1,
   QUEUE_MEM = 1 << 2,
   QUEUE_L1FILL = 1 << 3,
   QUEUE_MLC = 1 << 4,
@@ -99,10 +98,15 @@ typedef struct Mem_Queue_Entry_struct {
 } Mem_Queue_Entry;
 
 typedef struct Mem_Queue_struct {
-  Mem_Queue_Entry* base;
+  Mem_Queue_Entry* base; /* transport queues (fill, bus out) only */
   int entry_count;
-  int reserved_entry_count;
+  /* Lookup levels: how many misses this level is tracking. A request takes one when
+     it misses here and gives it back when its fill lands. */
+  int mshrs_taken;
   uns size;
+  /* Lookup levels only: one FIFO of request ids per bank, in age order. */
+  List* banks;
+  uns num_banks;
   /* Outstanding misses this level is tracking. Separate from size: entries are
      pipeline occupancy, MSHRs are fills in flight. */
   uns mshr_size;
@@ -159,11 +163,13 @@ typedef struct Memory_struct {
 
   /* various queues (arrays) */
   Mem_Queue mlc_queue;
-  Mem_Queue mlc_fill_queue;
   Mem_Queue l1_queue;
-  Mem_Queue bus_out_queue;
-  Mem_Queue l1fill_queue;
   Mem_Queue* core_fill_queues;
+  /* Fills that could not finish on the cycle their data arrived -- a dirty eviction
+     whose writeback was refused, or a done_func that could not take a port. Walked
+     each cycle to retry. Everything else completes inside the DRAM callback and
+     never appears here, so this is short where the MSHR files are not. */
+  List completed_reqs;
 
   Counter last_mem_queue_cycle;
 
@@ -178,11 +184,6 @@ typedef struct Memory_struct {
   Cache* umon_cache_core;
   double** umon_cache_hit_count_core;
 
-  uns* bus_out_queue_entry_count_core;
-  int* bus_out_queue_index_core;         // bus_out_queue to mem_queue scheduling
-  Flag* bus_out_queue_seen_oldest_core;  // FIFO for bus_out_queue
-  uns8 bus_out_queue_round_robin_next_proc_id;
-  uns bus_out_queue_one_core_first_num_sent;
 } Memory;
 
 typedef struct Pref_LoadPCInfo_Struct {
@@ -205,6 +206,9 @@ typedef struct Pref_Req_Info_Struct {
   uns distance;
   Flag bw_limited;
   Destination dest;  // Only MLC/L2 values matter
+  /* The prefetcher already looked this line up in dest's cache and missed, so the
+     request is born one level below, holding an MSHR at dest. */
+  Flag probed;
 } Pref_Req_Info;
 
 typedef enum L1_Dyn_Partition_Policy_enum {
@@ -243,6 +247,10 @@ Flag new_mem_req(Mem_Req_Type type, uns8 proc_id, Addr addr, uns size, uns delay
                  Counter unique_num, Pref_Req_Info*);
 void mem_free_reqbuf(Mem_Req* req);
 void mem_complete_bus_in_access(Mem_Req* req, Counter priority);
+
+/* Probe a level's cache for its prefetcher. FALSE means the bank was busy this
+   cycle; otherwise *hit says whether the line is already there. */
+Flag mem_pref_probe(uns8 proc_id, Destination dest, Addr line_addr, Flag* hit);
 void print_req_buffer(void);
 void print_mem_queue(Mem_Queue_Type queue_type);
 Flag new_mem_dc_wb_req(Mem_Req_Type type, uns8 proc_id, Addr addr, uns size, uns delay, Op* op,

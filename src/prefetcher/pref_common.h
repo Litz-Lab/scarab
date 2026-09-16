@@ -29,6 +29,7 @@
 #ifndef __PREF_COMMON_H__
 #define __PREF_COMMON_H__
 
+#include "libs/list_lib.h"
 #include "memory/mem_req.h"
 
 #define PREF_TRACKERS_NUM 16
@@ -146,18 +147,15 @@ struct HWP_struct {
 
 /* Per core prefetching data */
 typedef struct HWP_Core_struct {
-  Pref_Mem_Req* dl0req_queue;    // L1 req queue
-  Pref_Mem_Req* umlc_req_queue;  // MLC req queue
-  Pref_Mem_Req* ul1req_queue;    // L2 req queue
+  /* One FIFO per bank of the cache each prefetcher targets, in age order. The level
+     serves its demand banks first, then offers what is left to these. */
+  List* dl0req_banks;
+  List* umlc_req_banks;
+  List* ul1req_banks;
 
-  int dl0req_queue_req_pos;
-  int dl0req_queue_send_pos;
-
-  int umlc_req_queue_req_pos;
-  int umlc_req_queue_send_pos;
-
-  int ul1req_queue_req_pos;
-  int ul1req_queue_send_pos;
+  int dl0req_count;
+  int umlc_req_count;
+  int ul1req_count;
 
   Counter ul1_misses;
   Counter curr_ul1_misses;
